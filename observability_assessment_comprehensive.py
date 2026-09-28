@@ -6229,6 +6229,25 @@ class ComprehensiveObservabilityAssessment:
                     ),
                     None,
                 )
+                stale_check = next(
+                    (
+                        c
+                        for c in self.results.discovery_checks
+                        if c.name
+                        == "Do you have stale or unused log groups that are collecting data but not being used?"
+                    ),
+                    None,
+                )
+                slo_check = next(
+                    (
+                        c
+                        for c in self.results.discovery_checks
+                        if c.name
+                        == "Have you defined Service Level Objectives (SLOs) for critical application services?"
+                        and "Organization" in c.category
+                    ),
+                    None,
+                )
 
                 all_checks = [
                     dashboards_check,
@@ -6237,30 +6256,39 @@ class ComprehensiveObservabilityAssessment:
                     tags_check,
                     export_check,
                     composite_check,
+                    stale_check,
+                    slo_check,
                 ]
                 check.evidence_check_ids = [c.id for c in all_checks if c]
                 evidence_refs = f"(Checks #{', #'.join(str(id) for id in check.evidence_check_ids)})"
 
                 # Tool consolidation: dashboards + alarms in a single platform
-                has_dashboards = (
+                has_dashboards = bool(
                     dashboards_check
                     and dashboards_check.result
                     and dashboards_check.result.get("DashboardEntries")
                 )
-                has_alarms = (
+                has_alarms = bool(
                     alarms_check
                     and alarms_check.result
                     and alarms_check.result.get("MetricAlarms")
                 )
                 has_consolidated = has_dashboards and has_alarms
 
-                # Cost governance signals (supporting evidence for L2)
-                has_retention = (
-                    retention_check
-                    and isinstance(retention_check.result, dict)
-                    and retention_check.result.get("groups_with_retention", 0) > 0
+                retention_result = (
+                    retention_check.result
+                    if retention_check and isinstance(retention_check.result, dict)
+                    else {}
                 )
-                has_export = (
+                retention_count = retention_result.get("groups_with_retention", 0)
+                retention_total = len(retention_result.get("top_log_groups", []))
+                retention_ratio = (
+                    retention_count / retention_total if retention_total else 0.0
+                )
+                has_retention_governance = retention_ratio >= 0.50
+                has_high_retention = retention_ratio >= 0.80
+
+                has_export = bool(
                     export_check
                     and isinstance(export_check.result, dict)
                     and export_check.result.get("exported_log_groups", 0) > 0
@@ -6270,18 +6298,37 @@ class ComprehensiveObservabilityAssessment:
                     and tags_check.result
                     and tags_check.result.get("ResourceTagMappingList")
                 )
-                has_composite = (
+                has_composite = bool(
                     composite_check
                     and composite_check.result
                     and composite_check.result.get("CompositeAlarms")
                 )
+                stale_result = (
+                    stale_check.result
+                    if stale_check and isinstance(stale_check.result, dict)
+                    else {}
+                )
+                stale_total = stale_result.get("total_checked", 0)
+                stale_percentage = stale_result.get("stale_percentage", 100)
+                has_active_usage = stale_total > 0 and stale_percentage <= 10
+                has_slos = bool(
+                    slo_check
+                    and isinstance(slo_check.result, dict)
+                    and slo_check.result.get("SloSummaries")
+                )
+
                 cost_signals = [
                     s
                     for s in [
-                        "retention policies" if has_retention else None,
+                        f"retention policies on {retention_count}/{retention_total} sampled log groups"
+                        if has_retention_governance
+                        else None,
                         "log archival" if has_export else None,
                         "resource tagging" if has_tags else None,
                         "composite alarms" if has_composite else None,
+                        f"active log usage ({100 - stale_percentage:.0f}% of the sample)"
+                        if has_active_usage
+                        else None,
                     ]
                     if s
                 ]
@@ -6289,19 +6336,36 @@ class ComprehensiveObservabilityAssessment:
                 manual_questions_l3 = "To assess Level 3, ask: (1) Do you track total observability spend across all tools? (2) Have you consolidated or eliminated redundant tooling? (3) Do you review which logs/metrics you collect vs. actually use? (4) Do you use tiered storage (Infrequent Access log class, S3 archival) for rarely-accessed data?"
                 manual_questions_l4 = "To assess Level 4, ask: (1) Can you tie observability investment to business outcomes (uptime SLAs, revenue protection)? (2) Do you measure MTTR improvement from observability investments? (3) Do you track observability cost per workload or team? (4) Does leadership view observability as a value driver rather than a cost center?"
 
-                # L2: Vendor consolidation — dashboards + alarms in CloudWatch
-                if has_consolidated:
-                    dashboard_count = len(
-                        dashboards_check.result.get("DashboardEntries", [])
-                    )
-                    alarm_count = len(alarms_check.result.get("MetricAlarms", []))
-                    cost_detail = (
-                        f" Additional cost governance signals detected: {', '.join(cost_signals)}."
-                        if cost_signals
-                        else ""
-                    )
+                dashboard_count = (
+                    len(dashboards_check.result.get("DashboardEntries", []))
+                    if has_dashboards
+                    else 0
+                )
+                alarm_count = (
+                    len(alarms_check.result.get("MetricAlarms", []))
+                    if has_alarms
+                    else 0
+                )
+
+                # L4: Business value and cost optimization — consolidated tooling,
+                # business-aligned SLOs, and broad cost-governance evidence.
+                if (
+                    has_consolidated
+                    and has_slos
+                    and has_high_retention
+                    and len(cost_signals) >= 4
+                ):
+                    check.current_level = 4
+                    check.explanation = f"Business-aligned cost optimization detected with {dashboard_count} dashboards and {alarm_count} alarms centralized in CloudWatch, formal SLOs, and cost governance through {', '.join(cost_signals)} {evidence_refs}. These configuration signals support Level 4; validate measured MTTR, availability, and business outcomes separately. {manual_questions_l4}"
+                # L3: Established validation policies — consolidated tooling plus
+                # multiple independently observable governance controls.
+                elif has_consolidated and len(cost_signals) >= 2:
+                    check.current_level = 3
+                    check.explanation = f"Established observability governance detected with {dashboard_count} dashboards and {alarm_count} alarms centralized in CloudWatch plus {', '.join(cost_signals)} {evidence_refs}. These controls indicate active cost and usage validation. {manual_questions_l4}"
+                # L2: Vendor consolidation — dashboards + alarms in CloudWatch.
+                elif has_consolidated:
                     check.current_level = 2
-                    check.explanation = f"Tool consolidation detected with {dashboard_count} dashboards and {alarm_count} alarms centralized in CloudWatch {evidence_refs}.{cost_detail} {manual_questions_l3} {manual_questions_l4}"
+                    check.explanation = f"Tool consolidation detected with {dashboard_count} dashboards and {alarm_count} alarms centralized in CloudWatch {evidence_refs}. {manual_questions_l3}"
                 # L1: Want optimization without knowledge
                 else:
                     check.current_level = 1
@@ -6566,15 +6630,26 @@ class ComprehensiveObservabilityAssessment:
                     and dashboards_check.result
                     and dashboards_check.result.get("DashboardEntries")
                 )
-                has_structured = bool(
-                    structured_check
-                    and structured_check.result
-                    and structured_check.result.get("json_percentage", 0) > 50
+                structured_result = (
+                    structured_check.result
+                    if structured_check and isinstance(structured_check.result, dict)
+                    else {}
                 )
+                structured_total = structured_result.get("total_groups_checked", 0)
+                structured_count = structured_result.get("json_groups", 0)
+                structured_ratio = (
+                    structured_count / structured_total if structured_total else 0.0
+                )
+                has_structured = structured_ratio > 0.50
                 has_app_signals = bool(
                     app_signals_check
                     and app_signals_check.result
                     and app_signals_check.result.get("Services")
+                )
+                has_slos = bool(
+                    slo_check
+                    and isinstance(slo_check.result, dict)
+                    and slo_check.result.get("SloSummaries")
                 )
 
                 strategy_signals = [
@@ -6583,8 +6658,11 @@ class ComprehensiveObservabilityAssessment:
                         "resource tagging" if has_tags else None,
                         "cross-account observability" if has_cross_account else None,
                         "centralized dashboards" if has_dashboards else None,
-                        "structured logging" if has_structured else None,
+                        f"structured logging ({structured_ratio:.0%} sampled coverage)"
+                        if has_structured
+                        else None,
                         "Application Signals" if has_app_signals else None,
+                        "service-level objectives" if has_slos else None,
                     ]
                     if s
                 ]
@@ -6592,8 +6670,23 @@ class ComprehensiveObservabilityAssessment:
                 manual_questions_l3 = "To assess Level 3, ask: (1) Do you have documented observability standards and naming conventions? (2) Do teams receive training on observability best practices? (3) Are there runbooks or playbooks tied to your alerts? (4) Do you conduct regular operational reviews (e.g., weekly ops meetings, post-incident reviews)?"
                 manual_questions_l4 = "To assess Level 4, ask: (1) Is observability embedded in your CI/CD pipeline (e.g., auto-instrumentation, deployment gates based on SLOs)? (2) Do you have a dedicated observability team or CoE driving continuous improvement? (3) Do teams proactively improve observability coverage without being asked? (4) Does leadership champion observability as a strategic capability?"
 
+                # L4: Culture of continuous improvement — all observable strategy
+                # proxies are present. Organizational culture still needs manual
+                # validation because it cannot be proven from AWS configuration.
+                if len(strategy_signals) == 6:
+                    check.current_level = 4
+                    check.explanation = f"Broad, integrated observability strategy detected across {', '.join(strategy_signals)} {evidence_refs}. The combination of standards, centralized visibility, application monitoring, and SLOs is consistent with a continuous-improvement operating model. Validate cultural adoption separately. {manual_questions_l4}"
+                # L3: Established practices and training — require broad technical
+                # adoption plus evidence of both standardization and enterprise scope.
+                elif (
+                    len(strategy_signals) >= 4
+                    and (has_tags or has_structured)
+                    and (has_cross_account or has_slos)
+                ):
+                    check.current_level = 3
+                    check.explanation = f"Established technical observability practices detected through {', '.join(strategy_signals)} {evidence_refs}. The configuration shows organization-wide standardization and operational adoption; validate training, runbooks, and review processes separately. {manual_questions_l3}"
                 # L2: Unified tools and technologies
-                if len(strategy_signals) >= 2:
+                elif len(strategy_signals) >= 2:
                     check.current_level = 2
                     check.explanation = f"Unified tools and technologies detected: {', '.join(strategy_signals)} {evidence_refs}. {manual_questions_l3} {manual_questions_l4}"
                 # L1: Data collection strategy only
@@ -7298,7 +7391,7 @@ class ComprehensiveObservabilityAssessment:
                     ),
                 ],
             },
-            13: {  # Q13: Do you have an enterprise observability strategy?
+            16: {  # Q16: Do you have an enterprise observability strategy?
                 1: [  # L1 → L2: data collection only → unified tools and technologies
                     (
                         "Standardize on a common observability toolset across teams",
@@ -7361,7 +7454,7 @@ class ComprehensiveObservabilityAssessment:
                     ),
                 ],
             },
-            14: {  # Q14: How do you use SLOs?
+            13: {  # Q13: How do you use SLOs?
                 1: [  # L1 → L2: team experimentation → enterprise adoption for reliability
                     (
                         "Enable Application Signals for automatic SLI collection",
@@ -7419,7 +7512,7 @@ class ComprehensiveObservabilityAssessment:
                     ),
                 ],
             },
-            15: {  # Q15: Are you getting ROI from your observability tools?
+            17: {  # Q17: Are you getting ROI from your observability tools?
                 1: [  # L1 → L2: want optimization without knowledge → vendor consolidation
                     (
                         "Consolidate observability tools to reduce vendor sprawl",
@@ -7482,7 +7575,7 @@ class ComprehensiveObservabilityAssessment:
                     ),
                 ],
             },
-            16: {  # Q16: Do you use any AI/ML capability today?
+            14: {  # Q14: Do you use any AI/ML capability today?
                 1: [  # L1 → L2: no AI/ML → natural language query capability
                     (
                         "Enable AWS DevOps Agent for natural language queries",
@@ -7540,7 +7633,7 @@ class ComprehensiveObservabilityAssessment:
                     ),
                 ],
             },
-            17: {  # Q17: Do you have real end-user monitoring?
+            15: {  # Q15: Do you have real end-user monitoring?
                 1: [  # L1 → L2: test users for validation → synthetic scripts on schedule
                     (
                         "Set up CloudWatch Synthetics canaries on a schedule",
@@ -8240,6 +8333,7 @@ class ComprehensiveObservabilityAssessment:
                 "Do you have log export tasks configured for archival?",
                 "Do you use composite alarms to reduce alarm noise?",
                 "Do you have stale or unused log groups that are collecting data but not being used?",
+                "Have you defined Service Level Objectives (SLOs) for critical application services?",
             ],
         }
         return mapping.get(question_id, [])

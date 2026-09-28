@@ -4,12 +4,14 @@
 """
 Scrub sensitive AWS resource data from an Observability Assessment HTML report.
 
-Replaces account IDs, resource identifiers, ARNs, and custom resource names
-with AWS-documentation-standard placeholders. See SCRUBBING.md for conventions.
+Replaces a specified account ID, known resource identifier patterns, UUIDs, email
+addresses, and custom names supplied in a mapping file with documentation-style
+placeholders. It does not discover arbitrary customer resource names automatically.
+See SCRUBBING.md for conventions and required manual review.
 
 Usage:
     python3 scripts/scrub-sample-report.py \
-        --input assessment-result/observability_assessment.html \
+        --input assessment-result/observability_assessment_20260712_164009_209466560996.html \
         --output sample-result/observability_assessment_sample.html \
         --account-id 209466560996
 

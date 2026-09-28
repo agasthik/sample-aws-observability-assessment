@@ -23,7 +23,7 @@ reported the issue. Please try to include as much information as you can. Detail
 ## Contributing via Pull Requests
 Contributions via pull requests are much appreciated. Before sending us a pull request, please ensure that:
 
-1. You are working against the latest source on the *master* branch.
+1. You are working against the latest source on the `main` branch.
 2. You check existing open, and recently merged, pull requests to make sure someone else hasn't addressed the problem already.
 3. You open an issue to discuss any significant work - we would hate for your time to be wasted.
 
@@ -31,10 +31,33 @@ To send us a pull request, please:
 
 1. Fork the repository.
 2. Modify the source; please focus on the specific change you are contributing. If you also reformat all the code, it will be hard for us to focus on your change.
-3. Ensure local tests pass.
+3. Run the relevant local validation commands below.
 4. Commit to your fork using clear commit messages.
 5. Send us a pull request, answering any default questions in the pull request interface.
 6. Pay attention to any automated CI failures reported in the pull request, and stay involved in the conversation.
+
+## Local validation
+
+The repository does not currently have a behavioral test suite. Run the checks relevant to
+your change:
+
+```bash
+# Python syntax and style
+python3 -m compileall -q observability_assessment_comprehensive.py scripts/scrub-sample-report.py
+ruff check observability_assessment_comprehensive.py scripts/scrub-sample-report.py
+ruff format --check observability_assessment_comprehensive.py scripts/scrub-sample-report.py
+
+# CloudFormation
+cfn-lint 1-observability-assessment-role.yaml 2-observability-assessment-codebuild.yaml
+
+# Focused AWS validation when credentials are available
+python3 observability_assessment_comprehensive.py --profile YOUR_PROFILE --single-check CHECK_ID --debug
+python3 observability_assessment_comprehensive.py --profile YOUR_PROFILE --single-question QUESTION_ID --debug
+```
+
+Do not commit raw assessment output. Reports can contain account IDs, ARNs, resource names,
+and infrastructure details. Follow [SCRUBBING.md](SCRUBBING.md) before updating committed
+sample reports.
 
 GitHub provides additional document on [forking a repository](https://help.github.com/articles/fork-a-repo/) and
 [creating a pull request](https://help.github.com/articles/creating-a-pull-request/).

@@ -25,7 +25,7 @@ If applicable, paste the relevant console output or error traceback. Run with `-
 **Environment (please complete the following information):**
  - OS: [e.g. macOS 14, Amazon Linux 2023]
  - Python version: [e.g. 3.12]
- - boto3 / AWS CLI version: [e.g. boto3 1.34.x, aws-cli 2.15.x]
+ - boto3 / AWS CLI version: [e.g. boto3 1.34.x, aws-cli 2.34.21]
  - How it was run: [local profile / assumed role / CodeBuild]
  - AWS region: [e.g. us-west-2]
 

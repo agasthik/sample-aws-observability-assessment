@@ -117,20 +117,39 @@ Use the provided `scripts/scrub-sample-report.py` script:
 
 ```bash
 python3 scripts/scrub-sample-report.py \
-    --input assessment-result/observability_assessment.html \
+    --input assessment-result/observability_assessment_20260712_164009_209466560996.html \
     --output sample-result/observability_assessment_sample.html \
     --account-id 209466560996
 ```
 
 The script performs regex-based replacements in this order:
+
 1. Account ID → `111122223333`
-2. Known resource ID patterns (instance, VPC, subnet, SG, ENI)
-3. ARN resource-name portions
-4. UUID/GUID patterns in stack-ids and resource identifiers
-5. Custom resource names (provided via `--names-file` or auto-detected)
+2. Custom resource names supplied through `--names-file`
+3. Amazon Managed Service for Prometheus workspace IDs
+4. Known resource ID patterns (instance, VPC, subnet, SG, ENI, and related IDs)
+5. UUID/GUID patterns in stack IDs and resource identifiers
+6. Email addresses
+
+The script does not automatically discover arbitrary customer resource names or replace
+every ARN resource-name component. Provide those values in `--names-file` and complete the
+manual review.
 
 **Always review the output manually** — regex can miss context-dependent names
 (e.g., a log group named after an internal project that doesn't match a pattern).
+
+Transformation mode prints post-scrub warnings but currently exits with status `0`. Do not
+use that exit status alone as a release gate. After reviewing and updating any custom name
+mappings, run verification-only mode; it exits nonzero when its checks find remaining
+patterns:
+
+```bash
+python3 scripts/scrub-sample-report.py \
+    --input sample-result/observability_assessment_sample.html \
+    --output /tmp/not-used.html \
+    --account-id 209466560996 \
+    --verify-only
+```
 
 ### Verification
 

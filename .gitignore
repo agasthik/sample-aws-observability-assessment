@@ -1,5 +1,7 @@
 # Ignore local files directory and all contents
 localfiles/
+.codegraph/
+.claude/
 
 # Assessment output files (may contain account-specific data)
 sample-result/*
@@ -25,6 +27,6 @@ __pycache__/
 .kiro/
 .vscode/
 
-
+.DS_Store
 
 DESIGN_SYSTEM_TEMPLATE.MD

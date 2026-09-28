@@ -1,10 +1,4 @@
 # cfn-lint configuration
 # https://github.com/aws-cloudformation/cfn-lint/blob/main/README.md#configuration
-#
-# W3037 flags IAM policy actions it doesn't recognize. The templates grant
-# logs:ListLogGroupFieldIndexes, a valid (newer) CloudWatch Logs read action
-# that lags behind cfn-lint's bundled IAM action spec, producing a false
-# positive. Suppress just this rule so valid least-privilege actions don't
-# fail CI.
-ignore_checks:
-  - W3037
+# Keep all checks enabled, including IAM action-name validation (W3037).
+ignore_checks: []

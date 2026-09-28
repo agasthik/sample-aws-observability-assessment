@@ -3485,23 +3485,34 @@ class ComprehensiveObservabilityAssessment:
 
             # 4. Check for cross-account subscription filters
             try:
-                sub_filters = self.run_aws_command(
-                    "aws logs describe-subscription-filters --output json"
+                log_groups_result = self.run_aws_command(
+                    "aws logs describe-log-groups --output json"
                 )
-                if sub_filters and sub_filters.get("subscriptionFilters"):
-                    cross_account_filters = 0
-                    for filter_item in sub_filters["subscriptionFilters"]:
+                cross_account_filters = 0
+                for log_group in (log_groups_result or {}).get("logGroups", []):
+                    log_group_name = log_group.get("logGroupName")
+                    if not log_group_name:
+                        continue
+                    sub_filters = self.run_aws_command(
+                        "aws logs describe-subscription-filters "
+                        f"--log-group-name {self._sanitize(log_group_name)} "
+                        "--output json"
+                    )
+                    for filter_item in (sub_filters or {}).get(
+                        "subscriptionFilters", []
+                    ):
                         dest_arn = filter_item.get("destinationArn", "")
-                        if (
-                            ":" in dest_arn
-                            and dest_arn.split(":")[4] != self.results.account_id
+                        arn_parts = dest_arn.split(":")
+                        if len(arn_parts) > 4 and arn_parts[4] not in (
+                            "",
+                            self.results.account_id,
                         ):
                             cross_account_filters += 1
 
-                    if cross_account_filters > 0:
-                        patterns.append(
-                            f"Cross-account Subscription Filters ({cross_account_filters} filters)"
-                        )
+                if cross_account_filters > 0:
+                    patterns.append(
+                        f"Cross-account Subscription Filters ({cross_account_filters} filters)"
+                    )
             except Exception:
                 pass
 
@@ -3686,12 +3697,11 @@ class ComprehensiveObservabilityAssessment:
             # Check each log group for field indexes (indicates JSON structured logs)
             for group_name in all_target_groups:
                 try:
-                    import shlex
-
-                    escaped_name = shlex.quote(group_name)
                     # Check if log group has field indexes (indicates structured JSON logs)
                     result = self.run_aws_command(
-                        f"aws logs list-log-group-field-indexes --log-group-identifier {escaped_name} --output json"
+                        "aws logs describe-field-indexes "
+                        f"--log-group-identifiers {self._sanitize(group_name)} "
+                        "--output json"
                     )
 
                     if result and result.get("fieldIndexes"):

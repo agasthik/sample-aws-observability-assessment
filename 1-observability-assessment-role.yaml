@@ -45,10 +45,10 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - sts:GetCallerIdentity
                   - logs:DescribeLogGroups
                   - logs:DescribeLogStreams
                   - logs:DescribeQueries
+                  - logs:FilterLogEvents
                   - logs:DescribeQueryDefinitions
                   - logs:DescribeMetricFilters
                   - logs:DescribeSubscriptionFilters
@@ -56,10 +56,7 @@ Resources:
                   - logs:DescribeIndexPolicies
                   - logs:DescribeDestinations
                   - logs:DescribeFieldIndexes
-                  - logs:GetLogGroupFields
                   - logs:ListLogAnomalyDetectors
-                  - logs:ListLogGroupFieldIndexes
-                  - logs:StartQuery
                   - cloudwatch:ListMetrics
                   - cloudwatch:DescribeAlarms
                   - cloudwatch:DescribeAnomalyDetectors
@@ -67,7 +64,6 @@ Resources:
                   - cloudwatch:GetDashboard
                   - cloudwatch:ListMetricStreams
                   - ec2:DescribeInstances
-                  - ec2:DescribeFlowLogs
                   - lambda:ListFunctions
                   - lambda:GetFunctionConfiguration
                   - xray:GetServiceGraph
@@ -75,18 +71,14 @@ Resources:
                   - xray:GetGroups
                   - xray:GetInsightSummaries
                   - xray:GetTraceSummaries
-                  - sns:ListTopics
-                  - sns:ListSubscriptions
                   - ecs:ListClusters
                   - ecs:DescribeClusters
                   - ecs:ListTasks
                   - ecs:DescribeTasks
                   - ecs:DescribeTaskDefinition
-                  - ecs:ListTaskDefinitions
                   - eks:ListClusters
                   - eks:DescribeCluster
                   - eks:ListAddons
-                  - eks:DescribeAddon
                   - synthetics:DescribeCanaries
                   - rum:ListAppMonitors
                   - ssm:DescribeInstanceInformation

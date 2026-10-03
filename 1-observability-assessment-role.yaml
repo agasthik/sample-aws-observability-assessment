@@ -90,6 +90,7 @@ Resources:
                   - eks:ListClusters
                   - eks:DescribeCluster
                   - eks:ListAddons
+                  - eks:DescribeAddon
                   - synthetics:DescribeCanaries
                   - rum:ListAppMonitors
                   - ssm:DescribeInstanceInformation

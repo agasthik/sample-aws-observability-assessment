@@ -126,7 +126,7 @@ Use the provided `scripts/scrub-sample-report.py` script:
 ```bash
 python3 scripts/scrub-sample-report.py \
     --input assessment-result/observability_assessment_20260712_164009_123456789012.html \
-    --output sample-result/observability_assessment_sample.html \
+    --output sample-result/observability_assessment_single_account_sample.html \
     --account-id 123456789012
 ```
 
@@ -147,6 +147,10 @@ Optional flags:
 
 - `--skip-uuids` leaves UUIDs untouched (step 5 above). Use it only when a report's UUIDs
   are already non-sensitive and you want to preserve them; the default is to replace them.
+- `--strip-timestamps` removes the run timestamp from report filenames referenced in the
+  content (`observability_assessment_<ts>_<id>.html` → `observability_assessment_<id>.html`,
+  `organization_summary_<ts>.html` → `organization_summary.html`). Use it for org-scan
+  samples; see "Multi-Account / Org-Level Scrubbing" below.
 
 **Always review the output manually** — regex can miss context-dependent names
 (e.g., a log group named after an internal project that doesn't match a pattern).
@@ -158,7 +162,7 @@ patterns:
 
 ```bash
 python3 scripts/scrub-sample-report.py \
-    --input sample-result/observability_assessment_sample.html \
+    --input sample-result/observability_assessment_single_account_sample.html \
     --output /tmp/not-used.html \
     --account-id 123456789012 \
     --verify-only
@@ -173,15 +177,15 @@ shipped with macOS and GNU grep on Linux:
 
 ```bash
 # Check for the real account ID
-grep -c "123456789012" sample-result/observability_assessment_sample.html
+grep -c "123456789012" sample-result/observability_assessment_single_account_sample.html
 # Should return 0
 
 # Check for common resource ID patterns that weren't caught
-grep -oE '\b[0-9]{12}\b' sample-result/observability_assessment_sample.html | sort -u
+grep -oE '\b[0-9]{12}\b' sample-result/observability_assessment_single_account_sample.html | sort -u
 # Should only show 111122223333 (or other placeholder accounts)
 
 # Check for internal hostnames or endpoints
-grep -iE '(\.corp\.|\.internal\.|amazon\.com|@)' sample-result/observability_assessment_sample.html
+grep -iE '(\.corp\.|\.internal\.|amazon\.com|@)' sample-result/observability_assessment_single_account_sample.html
 # Should return nothing
 ```
 
@@ -223,14 +227,30 @@ user alias plus a label (`<alias>+<label>`). **Keep** the standard AWS Control T
 names — `Audit`, `Log Archive`, `Sandbox 1` — they're generic and make the sample look
 authentic.
 
-### 3. Filenames embed the account ID — rename them, or links break
+### 3. Filenames embed the account ID and run timestamp — normalize them, or links break
 
 Per-account filenames are `observability_assessment_<ts>_<accountid>.html`, and the summary
-links to them by that exact name. So: replace the account ID **inside** the HTML (fixes the
-`href`) **and** rename the output file to the placeholder ID (same `<ts>`). Because both use
-the same mapping, the links stay consistent. Keep timestamps — dates are not sensitive
-(see "Manual Scrubbing Checklist" item 6) — and keep the summary filename unchanged (the
-per-account "Back to Organization Summary" back-links point at it).
+links to them by that exact name (the static `href` list and the embedded JSON `link`). Each
+account report links back through its JSON `backLink` to `organization_summary_<ts>.html`.
+
+The committed sample uses **stable, timestamp-free names** so regenerating it updates files
+in place instead of deleting and re-adding all of them, and the README link keeps working:
+
+```
+sample-result/org-scan-sample/
+  organization_summary.html
+  observability_assessment_111122223333.html
+  observability_assessment_222233334444.html
+  ...
+```
+
+To get there, replace the account ID **inside** the HTML (the names-file mapping), pass
+`--strip-timestamps` so every cross-link drops its `<ts>`, and write each output file under
+the matching stable name. The run date still appears in each report's `generatedAt`.
+
+Assign placeholder IDs deterministically (management account → `111122223333`, then the
+rest sorted by account name) so the same account keeps the same filename across
+regenerations.
 
 ### 4. Turnkey loop
 
@@ -241,14 +261,17 @@ SRC=assessment-result/<run-dir>; OUT=sample-result/<sample-dir>; MAP=/tmp/name-m
 rm -rf "$OUT" && mkdir -p "$OUT"
 declare -A PH=( [<realid1>]=111122223333 [<realid2>]=222233334444 ... )   # 1 entry per account
 for f in "$SRC"/observability_assessment_*.html; do
-  base=$(basename "$f"); aid=$(echo "$base" | grep -oE '[0-9]{12}')
-  ts=$(echo "$base" | sed -E 's/observability_assessment_(.*)_[0-9]{12}\.html/\1/')
+  aid=$(basename "$f" | grep -oE '[0-9]{12}')
   python3 scripts/scrub-sample-report.py -i "$f" \
-    -o "$OUT/observability_assessment_${ts}_${PH[$aid]}.html" -a "$aid" --names-file "$MAP"
+    -o "$OUT/observability_assessment_${PH[$aid]}.html" -a "$aid" --names-file "$MAP" \
+    --strip-timestamps
 done
-SUM=$(basename "$SRC"/organization_summary_*.html)
-python3 scripts/scrub-sample-report.py -i "$SRC/$SUM" -o "$OUT/$SUM" -a <mgmt-id> --names-file "$MAP"
+python3 scripts/scrub-sample-report.py -i "$SRC"/organization_summary_*.html \
+  -o "$OUT/organization_summary.html" -a <mgmt-id> --names-file "$MAP" --strip-timestamps
 ```
+
+`declare -A` needs Bash 4+; on macOS run the loop with Homebrew `bash`, not the system
+`/bin/bash` 3.2.
 
 ### 5. Resource names the regex won't catch
 
@@ -288,9 +311,12 @@ grep -rohcE '<realid1>|<realid2>|...' "$OUT" | paste -sd+ | bc          # expect
 grep -rohiE '<alias>|<codename>|<custom-prefix>|<tool>|@amazon\.com' "$OUT" | sort -u   # empty
 # c) only placeholder 12-digit numbers remain
 grep -rohE '\b[0-9]{12}\b' "$OUT" | sort -u
-# d) cross-link integrity: every summary->account link resolves, and back-links resolve
-SUM=$(ls "$OUT"/organization_summary_*.html)
-for h in $(grep -oE 'observability_assessment_[0-9_]+\.html' "$SUM" | sort -u); do [ -f "$OUT/$h" ] || echo "MISSING $h"; done
+# d) cross-link integrity: every summary->account link and back-link resolves
+for h in $(grep -ohE '(observability_assessment|organization_summary)[0-9_]*\.html' "$OUT"/*.html | sort -u); do
+  [ -f "$OUT/$h" ] || echo "MISSING $h"
+done
+# e) no run timestamps left in filenames or links (expect empty)
+ls "$OUT" | grep -E '_[0-9]{8}_[0-9]{6}'; grep -ohE '_[0-9]{8}_[0-9]{6}\.html' "$OUT"/*.html | sort -u
 ```
 
 > **Do not paste real resource, account, or alias names into this guide or any committed

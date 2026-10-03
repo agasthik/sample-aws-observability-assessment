@@ -11,9 +11,18 @@ checks covering logs, metrics, traces, dashboards and alerting, and
 organizational practices. The tool generates HTML reports with maturity
 scores, supporting evidence, and recommendations.
 
-**[View the sample assessment report][sample-report]** or the
-**[sample organization summary report][sample-org-report]**, both generated
-with the Cloudscape report UI described below.
+## Sample Reports
+
+See what the assessment produces before you run it. Both samples use
+scrubbed data and open in your browser.
+
+- **[Single-account assessment report][sample-report]:** overall maturity
+  score, category charts, priority areas with recommendations, and a
+  searchable table of all 52 discovery checks with the evidence behind each
+  result.
+- **[Organization summary report][sample-org-report]:** account coverage,
+  score ranges, and category averages across an organization scan, with links
+  to each account's full report.
 
 ## Table of Contents
 
@@ -262,5 +271,5 @@ your environment prohibits `ssm:SendCommand`, run selected checks or questions,
 or omit that permission and treat the EC2 agent evidence as unavailable.
 
 [aws-cli-install]: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
-[sample-report]: https://aws-samples.github.io/sample-aws-observability-assessment/sample-result/observability_assessment_sample.html
-[sample-org-report]: https://aws-samples.github.io/sample-aws-observability-assessment/sample-result/org-scan-sample/organization_summary_20261003_050758.html
+[sample-report]: https://aws-samples.github.io/sample-aws-observability-assessment/sample-result/observability_assessment_single_account_sample.html
+[sample-org-report]: https://aws-samples.github.io/sample-aws-observability-assessment/sample-result/org-scan-sample/organization_summary.html

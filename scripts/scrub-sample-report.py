@@ -12,7 +12,7 @@ See SCRUBBING.md for conventions and required manual review.
 Usage:
     python3 scripts/scrub-sample-report.py \
         --input assessment-result/observability_assessment_20260712_164009_123456789012.html \
-        --output sample-result/observability_assessment_sample.html \
+        --output sample-result/observability_assessment_single_account_sample.html \
         --account-id 123456789012
 
     # With custom name mappings:
@@ -21,6 +21,11 @@ Usage:
         --output sample.html \
         --account-id 123456789012 \
         --names-file scripts/name-mappings.json
+
+    # Org-scan bundle: drop run timestamps from cross-links so the committed
+    # filenames stay the same between regenerations:
+    python3 scripts/scrub-sample-report.py -i <in> -o <out> -a 123456789012 \
+        --strip-timestamps
 """
 
 import argparse
@@ -152,6 +157,17 @@ def scrub_email_addresses(content: str) -> str:
     return email_pattern.sub("user@example.com", content)
 
 
+# Run timestamp embedded in generated report filenames and cross-links
+REPORT_TIMESTAMP_PATTERN = re.compile(
+    r"\b(observability_assessment|organization_summary)_\d{8}_\d{6}"
+)
+
+
+def strip_report_timestamps(content: str) -> str:
+    """Remove run timestamps from report filenames referenced in the content."""
+    return REPORT_TIMESTAMP_PATTERN.sub(r"\1", content)
+
+
 def verify_scrub(content: str, real_account_id: str) -> list[str]:
     """Check for potential remaining sensitive data and return warnings."""
     warnings = []
@@ -211,6 +227,11 @@ def main() -> int:
         "--skip-uuids",
         action="store_true",
         help="Skip UUID replacement (if you want to preserve them for some reason)",
+    )
+    parser.add_argument(
+        "--strip-timestamps",
+        action="store_true",
+        help="Drop run timestamps from report filenames in links (for org-scan samples)",
     )
     parser.add_argument(
         "--verify-only",
@@ -282,6 +303,11 @@ def main() -> int:
     # 6. Email addresses
     content = scrub_email_addresses(content)
     print("  [OK] Email addresses")
+
+    # 7. Run timestamps in cross-report links
+    if args.strip_timestamps:
+        content = strip_report_timestamps(content)
+        print("  [OK] Report link timestamps")
 
     # Write output
     output_path = Path(args.output)

@@ -136,7 +136,7 @@ Each `assess_*_maturity()` method contains per-question `if question_id == N:` b
 ## Conventions & gotchas
 
 - **Read-only by design.** Nearly every AWS interaction is `describe`/`list`/`get`, and the IAM policy in the role template grants read actions. The **one exception** is the EC2 CloudWatch agent check, which calls `ssm:SendCommand` (via the managed `AWS-RunShellScript` document) to run a read-only diagnostic on SSM-managed instances — it does not modify instances and is skipped for non-SSM-managed ones. Do not introduce any other mutating AWS call, and do not extend `SendCommand` usage to anything that changes state.
-- `assessment-result/` is gitignored. The committed examples are `sample-result/observability_assessment_sample.html` and the scrubbed multi-account bundle under `sample-result/org-scan-sample/`.
+- `assessment-result/` is gitignored. The committed examples are `sample-result/observability_assessment_single_account_sample.html` and the scrubbed multi-account bundle under `sample-result/org-scan-sample/`.
 - The target-account role template trusts the exact provided CodeBuild role. Local multi-account runs require a separately authorized principal in every target role trust policy.
 - Most checks are scoped to the selected region and several use bounded samples. Read `ASSESSMENT_METHODOLOGY.md` before changing scope or scoring behavior.
 - License is MIT-0; keep the `Copyright Amazon.com` / `SPDX-License-Identifier: MIT-0` header on source files.

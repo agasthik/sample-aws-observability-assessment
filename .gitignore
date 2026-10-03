@@ -5,7 +5,7 @@ localfiles/
 
 # Assessment output files (may contain account-specific data)
 sample-result/*
-!sample-result/observability_assessment_sample.html
+!sample-result/observability_assessment_single_account_sample.html
 !sample-result/org-scan-sample/
 assessment-result/
 

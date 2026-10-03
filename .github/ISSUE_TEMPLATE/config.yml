@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: 🔒 Report a security vulnerability (private)
+  - name: Report a security vulnerability (private)
     url: https://github.com/aws-samples/sample-aws-observability-assessment/security/advisories/new
     about: For security vulnerabilities with sensitive details, use a private GitHub Security Advisory instead of a public issue. For AWS-related issues, email aws-security@amazon.com.
-  - name: 💬 Questions & discussion
+  - name: Questions & discussion
     url: https://github.com/aws-samples/sample-aws-observability-assessment/discussions
     about: Have a usage question or want to discuss the tool? Please start a discussion instead of opening an issue.

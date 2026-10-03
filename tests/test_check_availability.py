@@ -442,6 +442,34 @@ class ExecutorAndCsvTests(unittest.TestCase):
         self.assertEqual(rows[1][:4], ["Logs Insights Query Definitions", "", "", ""])
         self.assertEqual(rows[1][5], "Unavailable")
 
+    def test_failed_check_reports_the_aws_cli_error(self):
+        assessment = configured_assessment()
+        assessment.results.account_id = "111111111111"
+        assessment.timestamp = "20300101_000000"
+
+        def aws(command, *_args, **_kwargs):
+            assessment.last_aws_error = (
+                "\nAn error occurred (AccessDeniedException) when calling the "
+                "DescribeQueryDefinitions operation: User <x> is not authorized\n"
+                "\nusage: aws [options] <command>\n"
+            )
+            return None
+
+        assessment.run_aws_command = aws
+        with temporary_working_directory():
+            with contextlib.redirect_stdout(io.StringIO()):
+                assessment.execute_discovery_check(3)
+            with open(assessment.csv_file, newline="") as stream:
+                rows = list(csv.reader(stream))
+
+        evidence = discovery(assessment, 3).evidence
+        self.assertIn(
+            "AWS CLI error: An error occurred (AccessDeniedException)", evidence
+        )
+        self.assertIn("User &lt;x&gt; is not authorized", evidence)
+        self.assertNotIn("usage:", evidence)
+        self.assertIn("AccessDeniedException", ",".join(rows[1]))
+
     def test_empty_success_writes_evaluated_csv_row(self):
         assessment = configured_assessment()
         assessment.results.account_id = "111111111111"

@@ -4,11 +4,29 @@
 import logging
 from types import MappingProxyType
 
+from observability_assessment.reporting.evidence import esc
 from observability_assessment.text import plural
 
 from .check_specs import CHECK_SPECS
 
 logger = logging.getLogger("observability_assessment")
+
+ERROR_SUMMARY_LIMIT = 300
+
+
+def last_error_summary(error):
+    """The line of an AWS CLI error that names the cause, truncated for the report.
+
+    The CLI follows the error with usage and help lines, so the first line
+    mentioning an error is used, falling back to the last non-empty line.
+    """
+    lines = [line.strip() for line in (error or "").splitlines() if line.strip()]
+    if not lines:
+        return ""
+    summary = next((line for line in lines if "error" in line.lower()), lines[-1])
+    if len(summary) > ERROR_SUMMARY_LIMIT:
+        summary = summary[: ERROR_SUMMARY_LIMIT - 3] + "..."
+    return summary
 
 
 CUSTOM_HANDLERS = MappingProxyType(
@@ -134,19 +152,34 @@ class DiscoveryExecutorMixin:
                 # be evaluated (e.g. permissions, throttling, CLI error) rather than
                 # "no resources". Mark it "error" so scoring/reporting can tell them apart.
                 check.status = "error"
-                check.evidence = (
-                    "Check could not be evaluated (AWS command returned no result -- "
-                    "likely a permissions, throttling, or CLI error). Re-run with --debug "
-                    "for details."
-                )
+                aws_error = last_error_summary(getattr(self, "last_aws_error", ""))
+                if aws_error:
+                    check.evidence = (
+                        f"Check could not be evaluated. AWS CLI error: {esc(aws_error)} "
+                        "Re-run with --debug for details."
+                    )
+                else:
+                    check.evidence = (
+                        "Check could not be evaluated (AWS command returned no result -- "
+                        "likely a permissions, throttling, or CLI error). Re-run with --debug "
+                        "for details."
+                    )
                 logger.warning(
-                    "Check #%s (%s) could not be evaluated -- no result returned",
+                    "Check #%s (%s) could not be evaluated -- %s",
                     check.id,
                     check.name,
+                    aws_error or "no result returned",
                 )
                 # Export errored checks to CSV as well
                 if 1 <= check.id <= len(CHECK_SPECS):
-                    self.export_unavailable_check_to_csv(check, "no result returned")
+                    try:
+                        self.export_unavailable_check_to_csv(
+                            check, aws_error or "no result returned"
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "Could not export check #%s to CSV: %s", check.id, e
+                        )
         except Exception as e:
             check.status = "error"
             # Drop any partial result so nothing downstream scores it.

@@ -22,8 +22,9 @@ class AwsRunner:
         self.profile = profile
         self.region = region
         self.env_override = env_override
-        # stderr of the last failed command, so callers can tell an expected
-        # "not in use" error apart from an access or transport failure.
+        # Why the last command failed (stderr, timeout, or launch error), so
+        # callers can tell an expected "not in use" error apart from an access
+        # or transport failure and report the cause.
         self.last_error = ""
 
     def run(self, command, max_retries=3):
@@ -55,6 +56,7 @@ class AwsRunner:
                     try:
                         return json.loads(result.stdout)
                     except json.JSONDecodeError as e:
+                        self.last_error = f"Could not parse JSON output: {e}"
                         logger.warning(
                             "Could not parse JSON output from command '%s': %s",
                             command,
@@ -87,9 +89,11 @@ class AwsRunner:
                 )
                 return None
             except subprocess.TimeoutExpired:
+                self.last_error = "Command timed out after 30s"
                 logger.warning("Command timed out after 30s: '%s'", command)
                 return None
             except (OSError, ValueError) as e:
+                self.last_error = f"Could not run the AWS CLI: {e}"
                 logger.warning("Failed to execute command '%s': %s", command, e)
                 return None
 

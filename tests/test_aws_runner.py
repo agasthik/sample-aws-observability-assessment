@@ -92,6 +92,21 @@ class AwsRunnerTests(unittest.TestCase):
             env=None,
         )
 
+    def test_timeouts_and_launch_failures_record_the_reason(self):
+        import subprocess
+
+        for error, expected in (
+            (subprocess.TimeoutExpired("aws", 30), "timed out after 30s"),
+            (FileNotFoundError("aws not found"), "Could not run the AWS CLI"),
+        ):
+            with self.subTest(expected=expected):
+                runner = AwsRunner(region="us-east-1")
+                with patch(
+                    "observability_assessment.aws.subprocess.run", side_effect=error
+                ):
+                    self.assertIsNone(runner.run("aws logs demo --output json"))
+                self.assertIn(expected, runner.last_error)
+
     def test_direct_run_retries_throttle_and_distinguishes_failure(self):
         runner = AwsRunner(region="us-east-1")
         with (

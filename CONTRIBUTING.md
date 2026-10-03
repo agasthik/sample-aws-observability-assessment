@@ -25,7 +25,7 @@ Contributions via pull requests are much appreciated. Before sending us a pull r
 
 1. You are working against the latest source on the `main` branch.
 2. You check existing open, and recently merged, pull requests to make sure someone else hasn't addressed the problem already.
-3. You open an issue to discuss any significant work - we would hate for your time to be wasted.
+3. You open an issue to discuss any significant work — we would hate for your time to be wasted.
 
 To send us a pull request, please:
 
@@ -38,14 +38,24 @@ To send us a pull request, please:
 
 ## Local validation
 
-The repository does not currently have a behavioral test suite. Run the checks relevant to
-your change:
+Use Python 3.12 or later. Install runtime and validation dependencies in the
+same environment that runs the tests, then run the checks relevant to your
+change:
 
 ```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements.txt ruff cfn-lint
+
 # Python syntax and style
-python3 -m compileall -q observability_assessment_comprehensive.py scripts/scrub-sample-report.py
-ruff check observability_assessment_comprehensive.py scripts/scrub-sample-report.py
-ruff format --check observability_assessment_comprehensive.py scripts/scrub-sample-report.py
+python3 -m compileall -q \
+  observability_assessment observability_assessment_comprehensive.py \
+  scripts/scrub-sample-report.py tests
+python3 -m unittest discover -s tests -v
+ruff check observability_assessment observability_assessment_comprehensive.py \
+  scripts/scrub-sample-report.py tests
+ruff format --check observability_assessment \
+  observability_assessment_comprehensive.py scripts/scrub-sample-report.py tests
 
 # CloudFormation
 cfn-lint 1-observability-assessment-role.yaml 2-observability-assessment-codebuild.yaml
@@ -55,11 +65,26 @@ python3 observability_assessment_comprehensive.py --profile YOUR_PROFILE --singl
 python3 observability_assessment_comprehensive.py --profile YOUR_PROFILE --single-question QUESTION_ID --debug
 ```
 
+When changing `report_ui/`, use Node.js 24 and rebuild the assets embedded in
+generated reports:
+
+```bash
+npm --prefix report_ui ci
+npm --prefix report_ui run typecheck
+npm --prefix report_ui run build
+python3 -m unittest discover -s tests -q
+```
+
+Include the updated files in `observability_assessment/reporting/assets/`
+with the UI source. The Report UI pull-request workflow rebuilds them and
+checks that they match the committed files. See
+[report_ui/README.md](report_ui/README.md) for the embedded data contract.
+
 Do not commit raw assessment output. Reports can contain account IDs, ARNs, resource names,
 and infrastructure details. Follow [SCRUBBING.md](SCRUBBING.md) before updating committed
 sample reports.
 
-GitHub provides additional document on [forking a repository](https://help.github.com/articles/fork-a-repo/) and
+GitHub provides additional documentation on [forking a repository](https://help.github.com/articles/fork-a-repo/) and
 [creating a pull request](https://help.github.com/articles/creating-a-pull-request/).
 
 
@@ -68,13 +93,12 @@ Looking at the existing issues is a great way to find something to contribute on
 
 
 ## Code of Conduct
-This project has adopted the [Amazon Open Source Code of Conduct](https://aws.github.io/code-of-conduct).
-For more information see the [Code of Conduct FAQ](https://aws.github.io/code-of-conduct-faq) or contact
-opensource-codeofconduct@amazon.com with any additional questions or comments.
+This project has adopted the Amazon Open Source Code of Conduct. See
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for details.
 
 
 ## Security issue notifications
-If you discover a potential security issue in this project we ask that you notify AWS/Amazon Security via our [vulnerability reporting page](http://aws.amazon.com/security/vulnerability-reporting/). Please do **not** create a public github issue.
+If you discover a potential security issue in this project, we ask that you notify AWS/Amazon Security via our [vulnerability reporting page](http://aws.amazon.com/security/vulnerability-reporting/). Please do **not** create a public GitHub issue.
 
 
 ## Licensing

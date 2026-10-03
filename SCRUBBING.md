@@ -32,9 +32,9 @@ and internal AWS documentation team conventions.
 | Data Type | Placeholder Pattern | Notes |
 |---|---|---|
 | EC2 Instance ID | `i-1234567890abcdef0` | Keep `i-` prefix |
-| VPC ID | `vpc-1a2b3c4d5e6f7g8h9` | Keep `vpc-` prefix |
-| Subnet ID | `subnet-1a2b3c4d5e6f7g8h` | Keep `subnet-` prefix |
-| Security Group ID | `sg-1a2b3c4d5e6f7g8h9` | Keep `sg-` prefix |
+| VPC ID | `vpc-1a2b3c4d5e6f7a8b9` | Keep `vpc-` prefix |
+| Subnet ID | `subnet-1a2b3c4d5e6f7a8b` | Keep `subnet-` prefix |
+| Security Group ID | `sg-1a2b3c4d5e6f7a8b9` | Keep `sg-` prefix |
 | EKS/ECS Cluster | `ExampleAppEKS-cluster`, `ExampleECS-cluster` | Use `Example` prefix |
 | S3 Bucket | `amzn-s3-demo-bucket` or `example-bucket-name` | AWS standard demo bucket name |
 | CloudFormation Stack ID | `a1b2c3d4-0001-0001-0001-abcdef012345` | Increment middle sections for multiple |
@@ -47,12 +47,20 @@ and internal AWS documentation team conventions.
 
 ### UUIDs and GUIDs
 
-| Position | Pattern |
+The automated script (`scrub_uuids()`) replaces every full 8-4-4-4-12 UUID with an
+incrementing, all-hex placeholder of the form `a1b2c3d4-NNNN-NNNN-NNNN-abcdefNNNNNN`,
+where `NNNN`/`NNNNNN` is a zero-padded counter. Identical source UUIDs map to the same
+placeholder:
+
+| Position | Pattern the script emits |
 |---|---|
-| First | `a1b2c3d4-5678-90ab-cdef-EXAMPLE11111` |
-| Second | `a1b2c3d4-5678-90ab-cdef-EXAMPLE22222` |
-| Third | `a1b2c3d4-5678-90ab-cdef-EXAMPLE33333` |
-| Short form (stack IDs) | `a1b2c3d4-0001-0001-0001-abcdef012345` (increment `0001`) |
+| First | `a1b2c3d4-0001-0001-0001-abcdef000001` |
+| Second | `a1b2c3d4-0002-0002-0002-abcdef000002` |
+| Third | `a1b2c3d4-0003-0003-0003-abcdef000003` |
+
+When editing a report by hand, follow the same `a1b2c3d4-NNNN-...` form and keep the
+counter distinct per UUID. The short-form stack-ID style (`a1b2c3d4-0001-0001-0001-abcdef012345`)
+is also acceptable for manual edits.
 
 ### ARNs
 
@@ -117,9 +125,9 @@ Use the provided `scripts/scrub-sample-report.py` script:
 
 ```bash
 python3 scripts/scrub-sample-report.py \
-    --input assessment-result/observability_assessment_20260712_164009_209466560996.html \
+    --input assessment-result/observability_assessment_20260712_164009_123456789012.html \
     --output sample-result/observability_assessment_sample.html \
-    --account-id 209466560996
+    --account-id 123456789012
 ```
 
 The script performs regex-based replacements in this order:
@@ -135,6 +143,11 @@ The script does not automatically discover arbitrary customer resource names or 
 every ARN resource-name component. Provide those values in `--names-file` and complete the
 manual review.
 
+Optional flags:
+
+- `--skip-uuids` leaves UUIDs untouched (step 5 above). Use it only when a report's UUIDs
+  are already non-sensitive and you want to preserve them; the default is to replace them.
+
 **Always review the output manually** — regex can miss context-dependent names
 (e.g., a log group named after an internal project that doesn't match a pattern).
 
@@ -147,25 +160,28 @@ patterns:
 python3 scripts/scrub-sample-report.py \
     --input sample-result/observability_assessment_sample.html \
     --output /tmp/not-used.html \
-    --account-id 209466560996 \
+    --account-id 123456789012 \
     --verify-only
 ```
 
 ### Verification
 
-After scrubbing, verify no sensitive data remains:
+After scrubbing, verify that no sensitive data remains.
+
+These use `grep -E` (POSIX extended regex) so they run on both the BSD grep
+shipped with macOS and GNU grep on Linux:
 
 ```bash
 # Check for the real account ID
-grep -c "209466560996" sample-result/observability_assessment_sample.html
+grep -c "123456789012" sample-result/observability_assessment_sample.html
 # Should return 0
 
 # Check for common resource ID patterns that weren't caught
-grep -oP '\b\d{12}\b' sample-result/observability_assessment_sample.html | sort -u
+grep -oE '\b[0-9]{12}\b' sample-result/observability_assessment_sample.html | sort -u
 # Should only show 111122223333 (or other placeholder accounts)
 
 # Check for internal hostnames or endpoints
-grep -iP '(\.corp\.|\.internal\.|amazon\.com|@)' sample-result/observability_assessment_sample.html
+grep -iE '(\.corp\.|\.internal\.|amazon\.com|@)' sample-result/observability_assessment_sample.html
 # Should return nothing
 ```
 
@@ -236,7 +252,7 @@ python3 scripts/scrub-sample-report.py -i "$SRC/$SUM" -o "$OUT/$SUM" -a <mgmt-id
 
 ### 5. Resource names the regex won't catch
 
-The script auto-handles resource IDs, ARNs, and UUIDs, but **custom resource names** need
+The script auto-handles resource IDs, account IDs in ARNs, and UUIDs, but **custom resource names** need
 explicit `--names-file` entries. Watch for (examples use generic placeholders — substitute
 what your run actually contains):
 
@@ -246,7 +262,7 @@ what your run actually contains):
   groups like `...-cdk-deployment`.
 - **Custom S3 buckets** — e.g. `my-app-bucket-<label>-<codename>` → `amzn-s3-demo-bucket`.
 - **Tool stacks** — a stack named after a third-party tool (e.g. a security scanner):
-  `<Tool>AssessmentStack`, `<tool>findingsbucket`. Map the bare token both cased
+  `<Tool>AssessmentStack`, `<tool>findingsbucket`. Map the bare token in both cases
   (`<Tool>` → `ExampleSecurity`, `<tool>` → `examplesecurity`).
 
 **Keep** genuinely public names — standard AWS workshop / sample-app resource names (e.g.
@@ -259,7 +275,7 @@ Mapping-order gotchas (the script applies `--names-file` **longest-first**):
 - Give a longer explicit entry (`<tool>2` → `ExampleSecurity2`) if a bare-token rule
   (`<tool>` → `examplesecurity`) would otherwise produce an ugly label like `examplesecurity2`.
 - Short hex fragments inside UUIDs/CSS colors (e.g. a 4-char hex like `abc4` inside
-  `...-4133-abc4-43d8...`) are false positives — the UUID scrubber rewrites those, so ignore.
+  `...-4133-abc4-43d8...`) are false positives — the UUID scrubber rewrites those, so ignore them.
 
 ### 6. Org-scan verification (do all of these)
 
@@ -302,4 +318,3 @@ folder needs its own negation, e.g. `!sample-result/org-scan-sample/`. Verify wi
 - [AWS CLI Example Standards](https://docs.aws.amazon.com/cli/latest/userguide/welcome-examples.html) — `111122223333` convention
 - [AWS Documentation Conventions](https://docs.aws.amazon.com/general/latest/gr/docconventions.html) — placeholder formatting
 - [aws-samples contribution guide](https://github.com/aws-samples/.github/blob/main/CONTRIBUTING.md) — public repo standards
-- Commit `3d21ebb` in this repo — the original scrub that established the patterns used here

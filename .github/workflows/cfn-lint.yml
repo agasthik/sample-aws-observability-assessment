@@ -14,14 +14,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Get changed CloudFormation files
+      - name: Get changed CloudFormation inputs
         id: changed-files
         uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
         with:
           files: |
-            **/*.yaml
-            **/*.yml
-            **/*.json
+            1-observability-assessment-role.yaml
+            2-observability-assessment-codebuild.yaml
+            .github/workflows/cfn-lint.yml
 
       - name: Set up Python
         if: steps.changed-files.outputs.any_changed == 'true'
@@ -42,4 +42,4 @@ jobs:
 
       - name: Skip message
         if: steps.changed-files.outputs.any_changed == 'false'
-        run: echo "No YAML/JSON files changed - skipping CloudFormation linting"
+        run: echo "No CloudFormation template or lint workflow changed - skipping CloudFormation linting"

@@ -405,7 +405,9 @@ class AlarmsDiscoveryMixin:
                     try:
                         body = json.loads(dashboard_body) if dashboard_body else {}
                     except ValueError:
-                        body = {}
+                        # A body that cannot be parsed is unknown, not "without variables"
+                        dashboards_failed.append(dashboard_name)
+                        continue
                     variables = (
                         body.get("variables") if isinstance(body, dict) else None
                     )
@@ -433,6 +435,9 @@ class AlarmsDiscoveryMixin:
                 except Exception:
                     # Unreadable dashboards are unknown, not "without variables"
                     dashboards_failed.append(dashboard_name)
+
+            if dashboards and len(dashboards_failed) == len(dashboards):
+                return None
 
             return {
                 "total_dashboards": len(dashboards),

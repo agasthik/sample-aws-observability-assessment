@@ -96,16 +96,32 @@ class HandlerFailureTests(unittest.TestCase):
 
     def test_unreadable_dashboard_is_not_counted_without_variables(self):
         assessment = failing_assessment(LARGEST_LOG_GROUPS)
+        bodies = {"ops": None, "broken": {"DashboardBody": "{not json"}, "ok": {}}
 
         def aws(command, *_args, **_kwargs):
             if "list-dashboards" in command:
-                return {"DashboardEntries": [{"DashboardName": "ops"}]}
-            return None
+                return {"DashboardEntries": [{"DashboardName": n} for n in bodies]}
+            return bodies[re.search(r"--dashboard-name '?(\w+)", command).group(1)]
 
         assessment.run_aws_command = aws
         result = assessment.execute_dashboard_variables_check()
-        self.assertEqual(result["failed_lookups"], 1)
-        self.assertEqual(result["dashboards_without_variables"], 0)
+        self.assertEqual(result["failed_lookups"], 2)
+        self.assertEqual(result["dashboards_without_variables"], 1)
+
+    def test_dashboard_check_is_unavailable_when_no_dashboard_is_readable(self):
+        assessment = failing_assessment(LARGEST_LOG_GROUPS)
+
+        def aws(command, *_args, **_kwargs):
+            if "list-dashboards" in command:
+                return {
+                    "DashboardEntries": [{"DashboardName": "a"}, {"DashboardName": "b"}]
+                }
+            if "--dashboard-name a" in command:
+                return {"DashboardBody": "{not json"}
+            return None
+
+        assessment.run_aws_command = aws
+        self.assertIsNone(assessment.execute_dashboard_variables_check())
 
     def test_eks_addon_failures_are_excluded_from_denominator(self):
         assessment = failing_assessment(LARGEST_LOG_GROUPS)
@@ -343,6 +359,32 @@ class HandlerFailureTests(unittest.TestCase):
         result = assessment.execute_ecs_task_log_check()
         self.assertEqual(result["logging_configured_count"], 1)
         self.assertNotIn("json_logging_count", result)
+
+    def test_ecs_task_log_check_is_unavailable_when_no_task_is_readable(self):
+        assessment = failing_assessment(LARGEST_LOG_GROUPS)
+
+        def aws(command, *_args, **_kwargs):
+            if "list-clusters" in command:
+                return {"clusterArns": ["a", "b"]}
+            if "list-tasks --cluster a" in command:
+                return {"taskArns": ["t"]}
+            return None
+
+        assessment.run_aws_command = aws
+        self.assertIsNone(assessment.execute_ecs_task_log_check())
+
+    def test_ecs_clusters_without_running_tasks_are_still_evaluated(self):
+        assessment = failing_assessment(LARGEST_LOG_GROUPS)
+
+        def aws(command, *_args, **_kwargs):
+            if "list-clusters" in command:
+                return {"clusterArns": ["a"]}
+            return {"taskArns": []}
+
+        assessment.run_aws_command = aws
+        result = assessment.execute_ecs_task_log_check()
+        self.assertEqual(result["total_tasks"], 0)
+        self.assertEqual(result["failed_lookups"], 0)
 
     def test_stale_log_group_probe_fetches_a_single_stream(self):
         assessment = failing_assessment(LARGEST_LOG_GROUPS)

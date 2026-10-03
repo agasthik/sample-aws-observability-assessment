@@ -330,6 +330,10 @@ class ComputeDiscoveryMixin:
                 except Exception:
                     failed_lookups += 1
 
+            # Every lookup that ran failed, so task logging is unknown, not absent.
+            if clusters and not all_running_tasks and failed_lookups:
+                return None
+
             return {
                 "clusters": clusters,
                 "running_tasks": all_running_tasks,

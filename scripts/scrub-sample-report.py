@@ -11,9 +11,9 @@ See SCRUBBING.md for conventions and required manual review.
 
 Usage:
     python3 scripts/scrub-sample-report.py \
-        --input assessment-result/observability_assessment_20260712_164009_209466560996.html \
+        --input assessment-result/observability_assessment_20260712_164009_123456789012.html \
         --output sample-result/observability_assessment_sample.html \
-        --account-id 209466560996
+        --account-id 123456789012
 
     # With custom name mappings:
     python3 scripts/scrub-sample-report.py \
@@ -53,25 +53,25 @@ RESOURCE_ID_PATTERNS = [
     # EC2 Instance IDs: i-0123456789abcdef0
     (re.compile(r"\bi-[0-9a-f]{8,17}\b"), "i-1234567890abcdef0"),
     # VPC IDs: vpc-0123456789abcdef0
-    (re.compile(r"\bvpc-[0-9a-f]{8,17}\b"), "vpc-1a2b3c4d5e6f7g8h9"),
+    (re.compile(r"\bvpc-[0-9a-f]{8,17}\b"), "vpc-1a2b3c4d5e6f7a8b9"),
     # Subnet IDs: subnet-0123456789abcdef0
-    (re.compile(r"\bsubnet-[0-9a-f]{8,17}\b"), "subnet-1a2b3c4d5e6f7g8h"),
+    (re.compile(r"\bsubnet-[0-9a-f]{8,17}\b"), "subnet-1a2b3c4d5e6f7a8b"),
     # Security Group IDs: sg-0123456789abcdef0
-    (re.compile(r"\bsg-[0-9a-f]{8,17}\b"), "sg-1a2b3c4d5e6f7g8h9"),
+    (re.compile(r"\bsg-[0-9a-f]{8,17}\b"), "sg-1a2b3c4d5e6f7a8b9"),
     # ENI IDs: eni-0123456789abcdef0
-    (re.compile(r"\beni-[0-9a-f]{8,17}\b"), "eni-1a2b3c4d5e6f7g8h9"),
+    (re.compile(r"\beni-[0-9a-f]{8,17}\b"), "eni-1a2b3c4d5e6f7a8b9"),
     # NAT Gateway IDs: nat-0123456789abcdef0
-    (re.compile(r"\bnat-[0-9a-f]{8,17}\b"), "nat-1a2b3c4d5e6f7g8h9"),
+    (re.compile(r"\bnat-[0-9a-f]{8,17}\b"), "nat-1a2b3c4d5e6f7a8b9"),
     # Internet Gateway IDs: igw-0123456789abcdef0
-    (re.compile(r"\bigw-[0-9a-f]{8,17}\b"), "igw-1a2b3c4d5e6f7g8h9"),
+    (re.compile(r"\bigw-[0-9a-f]{8,17}\b"), "igw-1a2b3c4d5e6f7a8b9"),
     # Route Table IDs: rtb-0123456789abcdef0
-    (re.compile(r"\brtb-[0-9a-f]{8,17}\b"), "rtb-1a2b3c4d5e6f7g8h9"),
+    (re.compile(r"\brtb-[0-9a-f]{8,17}\b"), "rtb-1a2b3c4d5e6f7a8b9"),
     # EBS Volume IDs: vol-0123456789abcdef0
-    (re.compile(r"\bvol-[0-9a-f]{8,17}\b"), "vol-1a2b3c4d5e6f7g8h9"),
+    (re.compile(r"\bvol-[0-9a-f]{8,17}\b"), "vol-1a2b3c4d5e6f7a8b9"),
     # Snapshot IDs: snap-0123456789abcdef0
-    (re.compile(r"\bsnap-[0-9a-f]{8,17}\b"), "snap-1a2b3c4d5e6f7g8h9"),
+    (re.compile(r"\bsnap-[0-9a-f]{8,17}\b"), "snap-1a2b3c4d5e6f7a8b9"),
     # AMI IDs: ami-0123456789abcdef0
-    (re.compile(r"\bami-[0-9a-f]{8,17}\b"), "ami-1a2b3c4d5e6f7g8h9"),
+    (re.compile(r"\bami-[0-9a-f]{8,17}\b"), "ami-1a2b3c4d5e6f7a8b9"),
 ]
 
 # UUID pattern (standard 8-4-4-4-12 hex format) — used in stack IDs, etc.
@@ -242,7 +242,7 @@ def main() -> int:
             for w in warnings:
                 print(w, file=sys.stderr)
             return 1
-        print("✓ No sensitive data patterns detected.")
+        print("[OK] No sensitive data patterns detected.")
         return 0
 
     # Load custom name mappings if provided
@@ -259,29 +259,29 @@ def main() -> int:
 
     # 1. Account ID (most important — do first before ARNs are modified)
     content = scrub_account_id(content, args.account_id)
-    print(f"  ✓ Account ID: {args.account_id} → {PLACEHOLDER_ACCOUNT}")
+    print(f"  [OK] Account ID: {args.account_id} → {PLACEHOLDER_ACCOUNT}")
 
     # 2. Custom name mappings (before resource IDs, since names may contain ID-like patterns)
     if name_mappings:
         content = scrub_custom_names(content, name_mappings)
-        print(f"  ✓ Custom names: {len(name_mappings)} replacements applied")
+        print(f"  [OK] Custom names: {len(name_mappings)} replacements applied")
 
     # 3. AMP workspace IDs (before general UUID scrub)
     content = scrub_amp_workspaces(content)
-    print("  ✓ AMP workspace IDs")
+    print("  [OK] AMP workspace IDs")
 
     # 4. Resource IDs (EC2, VPC, subnet, SG, etc.)
     content = scrub_resource_ids(content)
-    print("  ✓ Resource IDs (EC2, VPC, subnet, SG, ENI, NAT, IGW, etc.)")
+    print("  [OK] Resource IDs (EC2, VPC, subnet, SG, ENI, NAT, IGW, etc.)")
 
     # 5. UUIDs in stack IDs and other contexts
     if not args.skip_uuids:
         content = scrub_uuids(content)
-        print("  ✓ UUIDs (stack IDs, resource GUIDs)")
+        print("  [OK] UUIDs (stack IDs, resource GUIDs)")
 
     # 6. Email addresses
     content = scrub_email_addresses(content)
-    print("  ✓ Email addresses")
+    print("  [OK] Email addresses")
 
     # Write output
     output_path = Path(args.output)
@@ -292,13 +292,13 @@ def main() -> int:
     # Run verification
     warnings = verify_scrub(content, args.account_id)
     if warnings:
-        print("\n⚠️  Post-scrub verification found issues:")
+        print("\n[WARN] Post-scrub verification found issues:")
         for w in warnings:
             print(f"  {w}")
         print("\n  → Manual review recommended before committing.")
         return 0  # Still exit 0 — warnings are advisory
     else:
-        print("\n✓ Post-scrub verification passed — no sensitive patterns detected.")
+        print("\n[OK] Post-scrub verification passed — no sensitive patterns detected.")
 
     return 0
 

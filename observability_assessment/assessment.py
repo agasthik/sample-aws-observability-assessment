@@ -178,6 +178,9 @@ class ComprehensiveObservabilityAssessment(
         print(f"   Evidence: {target_check.evidence}")
         print()
 
+        if target_check.status != "success":
+            print("[ERROR] Single check could not be evaluated")
+            return False
         print("[OK] Single check complete!")
         return True
 

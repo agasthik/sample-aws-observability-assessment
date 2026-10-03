@@ -251,7 +251,10 @@ class MultiAccountAssessment(OrganizationReportMixin):
         results.best_maturity_level = maturity_label(results.overall_score_max)
 
     def run(self):
-        """Run multi-account assessment end-to-end."""
+        """Run multi-account assessment end-to-end.
+
+        Returns False when no account could be assessed.
+        """
         import concurrent.futures
 
         print("Starting Multi-Account Observability Assessment")
@@ -311,3 +314,4 @@ class MultiAccountAssessment(OrganizationReportMixin):
         print(
             f"Accounts: {len(r.account_results)} succeeded, {len(r.failed_accounts)} failed"
         )
+        return bool(r.account_results)

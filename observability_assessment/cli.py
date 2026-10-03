@@ -85,7 +85,8 @@ def main():
             role_name=args.cross_account_role,
             max_workers=args.max_workers,
         )
-        ma.run()
+        if not ma.run():
+            sys.exit(1)
     else:
         assessment = ComprehensiveObservabilityAssessment(
             profile=args.profile, region=args.region, role_arn=args.role_arn

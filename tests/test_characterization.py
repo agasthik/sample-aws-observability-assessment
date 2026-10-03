@@ -250,6 +250,35 @@ class CliContractTests(unittest.TestCase):
                         cli.main()
                 self.assertEqual(raised.exception.code, 1)
 
+    def test_multi_account_run_with_no_successful_accounts_exits_non_zero(self):
+        from observability_assessment import cli
+
+        with (
+            patch.object(sys, "argv", ["assessment", "--accounts", "111111111111"]),
+            patch.object(cli, "MultiAccountAssessment") as constructor,
+            patch.object(cli.logging, "basicConfig"),
+        ):
+            constructor.return_value.run.return_value = False
+            with self.assertRaises(SystemExit) as raised:
+                cli.main()
+        self.assertEqual(raised.exception.code, 1)
+
+    def test_single_check_fails_when_check_cannot_be_evaluated(self):
+        assessment = public.ComprehensiveObservabilityAssessment()
+        assessment.run_aws_command = Mock(return_value={"Account": "111111111111"})
+
+        def fail_check(check_id):
+            check = next(
+                c for c in assessment.results.discovery_checks if c.id == check_id
+            )
+            check.status = "error"
+
+        assessment.execute_discovery_check = Mock(side_effect=fail_check)
+
+        with contextlib.redirect_stdout(io.StringIO()) as stdout:
+            self.assertFalse(assessment.run_single_check(3))
+        self.assertIn("could not be evaluated", stdout.getvalue())
+
     def test_full_assessment_aborts_when_identity_is_unavailable(self):
         assessment = public.ComprehensiveObservabilityAssessment()
         assessment.run_aws_command = Mock(return_value=None)

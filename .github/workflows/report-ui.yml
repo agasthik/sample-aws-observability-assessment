@@ -1,0 +1,43 @@
+name: Report UI
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/report-ui.yml'
+      - 'report_ui/**'
+      - 'observability_assessment/reporting/assets/**'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: report_ui/package-lock.json
+
+      - name: Install report UI dependencies
+        run: npm --prefix report_ui ci
+
+      - name: Typecheck report UI
+        run: npm --prefix report_ui run typecheck
+
+      - name: Build self-contained report assets
+        run: npm --prefix report_ui run build
+
+      - name: Verify committed assets are current
+        run: |
+          if [ -n "$(git status --porcelain -- observability_assessment/reporting/assets)" ]; then
+            git status --short -- observability_assessment/reporting/assets
+            echo "Report assets differ from the frontend build. Rebuild and commit them."
+            exit 1
+          fi

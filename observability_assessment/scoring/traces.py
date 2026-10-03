@@ -352,11 +352,6 @@ class TracesScoringMixin:
                     and dashboards_check.result
                     and dashboards_check.result.get("DashboardEntries")
                 )
-                (
-                    alarms_check
-                    and isinstance(alarms_check.result, dict)
-                    and alarms_check.result.get("MetricAlarms")
-                )
                 has_composite = (
                     composite_check
                     and isinstance(composite_check.result, dict)

@@ -112,7 +112,7 @@ Pass dynamic command values through `_sanitize()`.
 2. For checks needing multiple requests or processing steps, add a
    `custom_...` entry in `discovery/executor.py` and an `execute_..._check()`
    method in the appropriate discovery module.
-3. Add the appropriate CSV-export handling in `export_check_result_to_csv()`. Checks 1–11 and 15 (CloudWatch cross-account observability) have dedicated branches, as do checks 51–52 (CloudWatch Omni), which export active/total counts. The remaining checks 12–50 fall through to a generic binary yes/no handler. Add a dedicated branch when adding checks beyond 52.
+3. Add the appropriate CSV-export handling in `export_check_result_to_csv()`. Checks 1–11, 15 (CloudWatch cross-account observability), and 29 (Transaction Search) have dedicated branches, as do checks 51–52 (CloudWatch Omni), which export active/total counts. The remaining checks 12–50 fall through to a generic binary yes/no handler. Add a dedicated branch when adding checks beyond 52.
 4. Wire its result into the relevant `assess_*_maturity()` method — note these methods currently locate discovery checks **by their exact `name` string**, so name changes there are breaking.
 
 ### Scoring model

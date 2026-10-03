@@ -97,7 +97,7 @@ Several checks intentionally limit work to keep the assessment practical:
 | Check area | Current scope |
 | --- | --- |
 | EC2 CloudWatch agent process and logging configuration | First 5 SSM-managed running instances |
-| Lambda JSON logging configuration | First 20 listed functions; reported total is the full listed population |
+| Lambda JSON logging configuration | All listed functions |
 | ECS task logging | First 3 listed clusters |
 | EKS control-plane logging | First 5 listed clusters |
 | Log retention | 10 largest log groups |

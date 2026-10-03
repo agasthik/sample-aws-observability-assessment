@@ -10,8 +10,15 @@ import unittest
 from html.parser import HTMLParser
 from pathlib import Path
 from unittest.mock import Mock
+from urllib.parse import unquote
+from xml.etree import ElementTree
 
-from observability_assessment.models import DiscoveryCheck, ObservabilityCheck
+from observability_assessment.models import (
+    DiscoveryCheck,
+    ObservabilityCheck,
+    OrganizationAssessmentResults,
+)
+from observability_assessment.reporting.organization import OrganizationReportMixin
 from observability_assessment_comprehensive import ComprehensiveObservabilityAssessment
 from test_characterization import temporary_working_directory
 
@@ -23,6 +30,7 @@ class ReportDocument(HTMLParser):
         self.inline_scripts = 0
         self.inline_styles = 0
         self.remote_runtime_assets = []
+        self.favicons = []
         self.event_handler_attributes = []
         self._script = None
         self._style = False
@@ -40,6 +48,8 @@ class ReportDocument(HTMLParser):
             self._style = True
         elif tag == "link" and "stylesheet" in attributes.get("rel", "").split():
             self.remote_runtime_assets.append(attributes.get("href"))
+        elif tag == "link" and "icon" in attributes.get("rel", "").split():
+            self.favicons.append(attributes)
 
     def handle_data(self, data):
         if self._script is not None:
@@ -167,6 +177,37 @@ def render_report(assessment):
 
 
 class CloudscapeReportTests(unittest.TestCase):
+    def test_account_and_organization_reports_embed_the_same_valid_favicon(self):
+        _, account_document, _, _ = render_report(sample_assessment())
+
+        organization = OrganizationReportMixin()
+        organization.org_results = OrganizationAssessmentResults()
+        organization.summary_report_filename = "organization_summary.html"
+        with temporary_working_directory():
+            with contextlib.redirect_stdout(io.StringIO()):
+                organization.generate_summary_report()
+            organization_html = Path(
+                "assessment-result/organization_summary.html"
+            ).read_text(encoding="utf-8")
+
+        organization_document = ReportDocument()
+        organization_document.feed(organization_html)
+        for document in (account_document, organization_document):
+            self.assertEqual(len(document.favicons), 1)
+            icon = document.favicons[0]
+            self.assertEqual(icon["type"], "image/svg+xml")
+            self.assertEqual(icon["sizes"], "any")
+            self.assertTrue(icon["href"].startswith("data:image/svg+xml,"))
+            svg = unquote(icon["href"].removeprefix("data:image/svg+xml,"))
+            self.assertEqual(
+                ElementTree.fromstring(svg).tag,
+                "{http://www.w3.org/2000/svg}svg",
+            )
+        self.assertEqual(
+            account_document.favicons[0]["href"],
+            organization_document.favicons[0]["href"],
+        )
+
     def test_saved_report_exposes_scores_and_assessment_data(self):
         assessment = sample_assessment()
 

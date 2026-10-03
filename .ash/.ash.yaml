@@ -52,3 +52,10 @@ global_settings:
     - rule_id: 'python.lang.security.audit.dangerous-subprocess-use-audit'
       path: 'tests/test_aws_runner.py'
       reason: 'Only constructs subprocess.CompletedProcess mock return values; no process is executed.'
+
+    # The report UI JavaScript bundle is a committed, minified build artifact of
+    # the Cloudscape React app. The "Secret Keyword" match is a substring in
+    # compiled vendor code (e.g. React DOM), not a real credential.
+    - rule_id: 'SECRET-SECRET-KEYWORD'
+      path: 'observability_assessment/reporting/assets/report-ui.js'
+      reason: 'False positive in a committed minified build artifact; the match is a keyword substring in bundled vendor JavaScript, not an actual secret. No credential is present in the compiled UI assets.'

@@ -852,15 +852,41 @@ function OrganizationView({ report }: { report: OrganizationReport }) {
           Organization assessment results
         </Header>
         <Container header={<Header variant="h2">Organization overview</Header>}>
-          <SpaceBetween size="m">
-            <Box>
-              {hasScores
-                ? `${scoreText(summary.averageScore)} average maturity across ${summary.scoredAccounts} scored accounts.`
-                : 'Average maturity: N/A. No accounts had assessed questions.'}
-            </Box>
-            <Box color="text-body-secondary">
-              Aggregate scores include assessed accounts only. Failed accounts and incomplete evidence are shown separately below.
-            </Box>
+          <SpaceBetween size="l">
+            <div className="report-summary-grid">
+              <div className="report-maturity-card">
+                <span className="report-summary-eyebrow">Average maturity</span>
+                <strong className="report-maturity-score">{scoreText(summary.averageScore, hasScores)}</strong>
+                <div className="report-maturity-meta">
+                  <span className="report-maturity-badge">{hasScores ? summary.maturityLevel || 'Level unavailable' : 'Not assessed'}</span>
+                  <span>
+                    {hasScores
+                      ? `Across ${summary.scoredAccounts} scored ${summary.scoredAccounts === 1 ? 'account' : 'accounts'}`
+                      : 'No accounts had assessed questions'}
+                  </span>
+                </div>
+              </div>
+              <div className="report-takeaway-card">
+                <span className="report-summary-eyebrow">Score range</span>
+                {hasScores ? (
+                  <>
+                    <div className="report-range-values">
+                      <div>
+                        <span className="report-range-label">Lowest</span>
+                        <strong className="report-range-score">{scoreText(summary.minScore)}</strong>
+                      </div>
+                      <div>
+                        <span className="report-range-label">Highest</span>
+                        <strong className="report-range-score">{scoreText(summary.maxScore)}</strong>
+                      </div>
+                    </div>
+                    <p className="report-takeaway-detail">Best maturity: {summary.bestMaturityLevel || 'N/A'}</p>
+                  </>
+                ) : (
+                  <h3 className="report-takeaway-title">No score range is available</h3>
+                )}
+              </div>
+            </div>
             {summary.failedAccounts > 0 && (
               <Alert type="warning" header="Some accounts could not be assessed">
                 {summary.failedAccounts} of {summary.totalAccounts} accounts failed. Review their status and errors in the account table.
@@ -872,12 +898,23 @@ function OrganizationView({ report }: { report: OrganizationReport }) {
                 Review coverage in the account table.
               </Alert>
             )}
-            <ColumnLayout columns={4} variant="text-grid">
-              <Stat label="Average score" value={scoreText(summary.averageScore, hasScores)} detail={hasScores ? summary.maturityLevel : 'Not assessed'} />
-              <Stat label="Score range" value={hasScores ? `${scoreText(summary.minScore)} – ${scoreText(summary.maxScore)}` : 'N/A'} detail={hasScores ? `Best maturity: ${summary.bestMaturityLevel || 'N/A'}` : undefined} />
-              <Stat label="Accounts assessed" value={`${countText(summary.assessedAccounts)} / ${countText(summary.totalAccounts)}`} detail={`${countText(summary.scoredAccounts)} with scores`} />
-              <Stat label="Failed accounts" value={countText(summary.failedAccounts)} />
-            </ColumnLayout>
+            <div className="report-glance-grid">
+              <div className="report-glance-item">
+                <Stat label="Accounts assessed" value={`${countText(summary.assessedAccounts)} / ${countText(summary.totalAccounts)}`} detail="Across this scan" />
+              </div>
+              <div className="report-glance-item">
+                <Stat label="Accounts with scores" value={countText(summary.scoredAccounts)} detail="Included in the average" />
+              </div>
+              <div className="report-glance-item">
+                <Stat label="Partial evidence" value={countText(partialAccounts)} detail="Accounts needing review" />
+              </div>
+              <div className="report-glance-item">
+                <Stat label="Failed accounts" value={countText(summary.failedAccounts)} detail={summary.failedAccounts > 0 ? 'Review status below' : 'No failed accounts'} />
+              </div>
+            </div>
+            <p className="report-summary-note">
+              Aggregate scores include assessed accounts only. The account table lists failed accounts and evidence gaps.
+            </p>
           </SpaceBetween>
         </Container>
         <Container header={<Header variant="h2">Category averages</Header>}>

@@ -9,12 +9,21 @@ from datetime import datetime
 from html import escape
 from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import quote
 
 from observability_assessment.models import maturity_label
 from observability_assessment.scoring.orchestration import average_level
 
 
 ASSET_DIRECTORY = Path(__file__).resolve().parent / "assets"
+FAVICON_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
+    '<rect width="64" height="64" rx="14" fill="#0972d3"/>'
+    '<path d="M9 34h13l7-16 9 28 6-12h11" fill="none" '
+    'stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="6"/>'
+    "</svg>"
+)
+FAVICON_DATA_URI = f"data:image/svg+xml,{quote(FAVICON_SVG, safe='')}"
 CATEGORIES = (
     ("logs", "Logs", "Logs"),
     ("metrics", "Metrics", "Metrics"),
@@ -259,6 +268,7 @@ def inline_report(payload, *, title=None, fallback=""):
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{safe_title}</title>
+    <link rel="icon" type="image/svg+xml" sizes="any" href="{FAVICON_DATA_URI}">
     <style id="assessment-styles">{css}</style>
 </head>
 <body>

@@ -3,7 +3,7 @@
 #
 # Security controls implemented in this template:
 #   - S3 bucket: SSE-S3 encryption, public access blocked, SSL-only policy, versioning (Priority: HIGH)
-#   - AWS CodeBuild role: scoped to S3 PutObject/GetObject, CloudWatch Logs,
+#   - AWS CodeBuild role: scoped to S3 PutObject, CloudWatch Logs,
 #     Organizations account discovery, and sts:AssumeRole (Priority: MEDIUM)
 #   - Build timeout: 60 minutes maximum (Priority: MEDIUM)
 AWSTemplateFormatVersion: 2010-09-09
@@ -282,7 +282,6 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:PutObject
-                  - s3:GetObject
                 Resource: !Sub "${ReportBucket.Arn}/*"
         - PolicyName: AssumeAssessmentRole
           PolicyDocument:

@@ -1388,19 +1388,67 @@ class EvidenceReportingMixin:
                 return f"{base_info} | {dashboards_with_variables}/{total_dashboards} dashboards have dynamic variables"
             return f"{base_info} | No dashboards found"
 
+        elif (
+            check.name
+            == "Do you have a history of Logs Insights queries being executed?"
+        ):
+            command_info = f"Command: {check.command}"
+            queries = check.result.get("queries", [])
+            if queries:
+                # Filter out system/default queries (Application Signals, etc.)
+                custom_queries = [
+                    query
+                    for query in queries
+                    if not any(
+                        pattern in query.get("queryString", "")
+                        for pattern in [
+                            'SOURCE "/aws/application-signals/',
+                            "/aws/containerinsights/",  # Container Insights auto queries
+                        ]
+                    )
+                ]
+
+                if custom_queries:
+                    query_details = []
+                    for query in custom_queries[:3]:  # Show first 3 custom queries
+                        query_id = esc(query.get("queryId", "Unknown")[:8])
+                        query_string = esc(
+                            query.get("queryString", "No query string")[:80]
+                        )
+                        status = esc(query.get("status", "Unknown"))
+                        query_details.append(
+                            f"ID:{query_id} Status:{status} Query:{query_string}"
+                        )
+
+                    return f"{command_info} | Found {plural(len(custom_queries), 'custom query', 'custom queries')} (filtered from {len(queries)} total) | Details: {' | '.join(query_details)}"
+                return f"{command_info} | Found {plural(len(queries), 'total query', 'total queries')} but no custom user-generated queries (all appear to be system/auto-generated)"
+            return f"{command_info} | No query history found - no CloudWatch Logs Insights queries have been executed recently"
+
+        elif (
+            check.name
+            == "What percentage of application logs use structured JSON format for easier parsing and analysis?"
+        ):
+            total_checked = check.result.get("total_groups_checked", 0)
+            json_groups = check.result.get("json_groups", 0)
+            sample_groups = check.result.get("sample_groups", [])
+
+            summary = f"Analyzed the {plural(total_checked, 'largest log group')} | {json_groups}/{total_checked} have JSON structured logs"
+            if json_groups > 0 and sample_groups:
+                return f"{summary} | Examples: {', '.join(esc(g) for g in sample_groups[:3])}"
+            return summary
+
+        elif (
+            check.name
+            == "Do you use X-Ray service maps to visualize application architecture?"
+        ):
+            services = check.result.get("Services", [])
+            if services:
+                sample_names = [esc(svc.get("Name", "Unknown")) for svc in services[:3]]
+                return f"{base_info} | Found {plural(len(services), 'X-Ray service')} (e.g., {', '.join(sample_names)})"
+            return f"{base_info} | No X-Ray services found"
+
         # Default handler for other checks
         else:
-            # Provide specific context for known checks that might return empty results
-            if (
-                check.name
-                == "Is the EKS CloudWatch Observability add-on deployed with Container Insights and Application Signals enabled?"
-            ):
-                return f"{base_info} | {command_info} | No EKS clusters found or the CloudWatch Observability add-on is not installed"
-            elif check.name == "Have you enabled anomaly detection?":
-                return f"{command_info} | No log anomaly detectors found - CloudWatch Logs anomaly detection not configured"
-            elif check.name == "Are you using CloudWatch cross-account observability?":
-                return f"{command_info} | No OAM links found - CloudWatch Observability Access Manager not configured for cross-account log access"
-
             # Try to find common patterns in the result
             if isinstance(check.result, dict):
                 # Count items in common AWS response patterns
@@ -1446,308 +1494,3 @@ class EvidenceReportingMixin:
                     return "No items found"
             else:
                 return "Command executed successfully"
-
-        if (
-            check.name
-            == "Do you have a history of Logs Insights queries being executed?"
-        ):
-            queries = check.result.get("queries", [])
-            if queries:
-                # Filter out system/default queries (Application Signals, etc.)
-                custom_queries = []
-                for query in queries:
-                    query_string = query.get("queryString", "")
-                    # Skip queries that look like system-generated ones
-                    if not any(
-                        pattern in query_string
-                        for pattern in [
-                            'SOURCE "/aws/application-signals/',
-                            "/aws/containerinsights/",  # Container Insights auto queries
-                        ]
-                    ):
-                        custom_queries.append(query)
-
-                if custom_queries:
-                    query_details = []
-                    for query in custom_queries[:3]:  # Show first 3 custom queries
-                        query_id = query.get("queryId", "Unknown")[:8]  # Shorter ID
-                        query_string = query.get("queryString", "No query string")[:80]
-                        status = query.get("status", "Unknown")
-                        query_details.append(
-                            f"ID:{query_id} Status:{status} Query:{query_string}"
-                        )
-
-                    return f"{command_info} | Found {plural(len(custom_queries), 'custom query', 'custom queries')} (filtered from {len(queries)} total) | Details: {' | '.join(query_details)}"
-                else:
-                    return f"{command_info} | Found {plural(len(queries), 'total query', 'total queries')} but no custom user-generated queries (all appear to be system/auto-generated)"
-            return f"{command_info} | No query history found - no CloudWatch Logs Insights queries have been executed recently"
-
-        elif (
-            check.name == "Do you have CloudWatch alarms configured for your resources?"
-        ):
-            metric_alarms = check.result.get("MetricAlarms", [])
-            composite_alarms = check.result.get("CompositeAlarms", [])
-            total_alarms = len(metric_alarms) + len(composite_alarms)
-            if total_alarms > 0:
-                summary = f"Found {plural(total_alarms, 'alarm')} ({len(metric_alarms)} metric, {len(composite_alarms)} composite)"
-                details = "<strong>Metric Alarms:</strong><br>" + "<br>".join(
-                    [alarm.get("AlarmName", "Unknown") for alarm in metric_alarms[:10]]
-                )
-                if len(metric_alarms) > 10:
-                    details += f"<br>... and {plural(len(metric_alarms) - 10, 'more metric alarm')}"
-                if composite_alarms:
-                    details += (
-                        "<br><br><strong>Composite Alarms:</strong><br>"
-                        + "<br>".join(
-                            [
-                                alarm.get("AlarmName", "Unknown")
-                                for alarm in composite_alarms[:10]
-                            ]
-                        )
-                    )
-                return f"{summary}<details><summary>Show Details</summary><div style='white-space: pre-wrap; word-wrap: break-word; max-width: 100%;'>{details}</div></details>"
-            return "No alarms found"
-
-        elif (
-            check.name
-            == "Do you have CloudWatch dashboards for visualizing metrics and logs?"
-        ):
-            dashboards = check.result.get("DashboardEntries", [])
-            if dashboards:
-                sample_names = [
-                    dash.get("DashboardName", "Unknown") for dash in dashboards[:3]
-                ]
-                return f"Found {plural(len(dashboards), 'dashboard')} (e.g., {', '.join(sample_names)})"
-            return "No dashboards found"
-
-        elif (
-            check.name
-            == "What percentage of Lambda functions use JSON structured logging?"
-        ):
-            if isinstance(check.result, dict):
-                total = check.result.get("total_functions", 0)
-                json_count = check.result.get("json_logging_count", 0)
-
-                if total > 0:
-                    percentage = int((json_count / total) * 100)
-                    return f"{command_info} | {json_count}/{total} Lambda functions ({percentage}%) have JSON structured logging configured"
-                else:
-                    return f"{command_info} | No Lambda functions found"
-            return f"{command_info} | No Lambda functions found"
-        elif (
-            check.name == "What percentage of ECS tasks use structured logging (JSON)?"
-        ):
-            clusters = check.result.get("clusters", [])
-            running_tasks = check.result.get("running_tasks", [])
-            tasks_with_logging = check.result.get("tasks_with_logging", [])
-            logging_configs = check.result.get("logging_configs", [])
-
-            total_running = len(running_tasks)
-            logging_count = len(tasks_with_logging)
-
-            if total_running > 0:
-                percentage = int((logging_count / total_running) * 100)
-
-                # Show detailed logging configurations
-                config_details = []
-                for config in logging_configs:
-                    task_def = config["taskDefinition"]
-                    containers_info = []
-                    for container in config["containers"]:
-                        driver = container["logDriver"]
-                        if driver == "awslogs":
-                            log_group = container["options"].get(
-                                "awslogs-group", "Unknown"
-                            )
-                            containers_info.append(
-                                f"{container['container']}:awslogs->{log_group}"
-                            )
-                        elif driver != "none":
-                            containers_info.append(f"{container['container']}:{driver}")
-                        else:
-                            containers_info.append(
-                                f"{container['container']}:no-logging"
-                            )
-                    config_details.append(f"{task_def}[{','.join(containers_info)}]")
-
-                configs_summary = " | ".join(config_details[:3])  # Show first 3
-                return f"Command: Multi-step ECS task logging analysis | {logging_count}/{total_running} running tasks ({percentage}%) have logging configured | Configs: {configs_summary}"
-            elif clusters:
-                return f"Command: Multi-step ECS task logging analysis | No running tasks found | Clusters checked: {len(clusters)}"
-            else:
-                return "Command: Multi-step ECS task logging analysis | No ECS clusters found"
-
-        elif check.name == "Have you enabled anomaly detection?":
-            anomaly_detectors = check.result.get("anomalyDetectors", [])
-            if anomaly_detectors:
-                detector_details = []
-                for detector in anomaly_detectors:
-                    detector_name = detector.get("detectorName", "Unknown")
-                    status = detector.get("anomalyDetectorStatus", "Unknown")
-                    log_groups = detector.get("logGroupArnList", [])
-
-                    # Extract log group names from ARNs
-                    log_group_names = []
-                    for arn in log_groups:
-                        log_group_name = arn.split(":")[-1] if ":" in arn else arn
-                        log_group_names.append(log_group_name)
-
-                    groups_summary = ", ".join(
-                        log_group_names[:2]
-                    )  # Show first 2 groups
-                    detector_details.append(
-                        f"{detector_name}({status})->{groups_summary}"
-                    )
-
-                detectors_summary = " | ".join(detector_details)
-                return f"{command_info} | Found {plural(len(anomaly_detectors), 'log anomaly detector')} | Details: {detectors_summary}"
-            return f"{command_info} | No log anomaly detectors found"
-
-        elif check.name == "Do you have log export tasks configured for archival?":
-            if check.result:
-                total_groups = check.result.get("total_log_groups", 0)
-                exported_groups = check.result.get("exported_log_groups", 0)
-                sample_groups = check.result.get("sample_exported_groups", [])
-
-                if exported_groups > 0:
-                    sample_info = (
-                        f"Examples: {', '.join(sample_groups[:3])}"
-                        if sample_groups
-                        else ""
-                    )
-                    return f"Found {exported_groups}/{total_groups} log groups with export task history | {sample_info}"
-                return f"Checked {plural(total_groups, 'log group')} - {exported_groups}/{total_groups} have export task history"
-            return "No log groups checked for export tasks"
-
-        elif (
-            check.name
-            == "Have you implemented cross-account and cross-Region log centralization?"
-        ):
-            if check.result:
-                patterns = check.result.get("centralization_patterns", [])
-                account_type = check.result.get("account_type", "Unknown")
-                org_status = check.result.get("organization_status", "Unknown")
-
-                if patterns:
-                    pattern_summary = ", ".join(patterns)
-                    return f"Account type: {account_type} | Organization: {org_status} | Centralization patterns: {pattern_summary}"
-                return f"Account type: {account_type} | Organization: {org_status} | No centralization patterns detected"
-            return "No centralization analysis performed"
-
-        elif (
-            check.name
-            == "What percentage of application logs use structured JSON format for easier parsing and analysis?"
-        ):
-            if check.result:
-                total_checked = check.result.get("total_groups_checked", 0)
-                json_groups = check.result.get("json_groups", 0)
-                sample_groups = check.result.get("sample_groups", [])
-
-                if json_groups > 0:
-                    sample_info = (
-                        f"Examples: {', '.join(sample_groups[:3])}"
-                        if sample_groups
-                        else ""
-                    )
-                    return f"Analyzed {plural(total_checked, 'largest log group')} | {json_groups}/{total_checked} have JSON structured logs | {sample_info}"
-                return f"Analyzed {plural(total_checked, 'largest log group')} | {json_groups}/{total_checked} have JSON structured logs"
-            return "No JSON structured log analysis performed"
-
-        elif (
-            check.name
-            == "Do you have field index policies configured for faster log queries?"
-        ):
-            if check.result:
-                total_groups = check.result.get("total_log_groups", 0)
-                indexed_groups = check.result.get("indexed_log_groups", 0)
-                sample_groups = check.result.get("sample_indexed_groups", [])
-
-                if indexed_groups > 0:
-                    sample_info = (
-                        f"Examples: {', '.join(sample_groups[:3])}"
-                        if sample_groups
-                        else ""
-                    )
-                    return f"Checked {plural(total_groups, 'largest log group')} by size - {indexed_groups}/{total_groups} have field index policies | {sample_info}"
-                return f"Checked {plural(total_groups, 'largest log group')} by size - {indexed_groups}/{total_groups} have field index policies"
-            return "No largest log groups checked for field indexes"
-
-        elif (
-            check.name
-            == "Do you have EKS clusters with the CloudWatch Observability add-on enabled?"
-        ):
-            if check.result:
-                total_clusters = check.result.get("total_clusters", 0)
-                observability_clusters = check.result.get("observability_clusters", 0)
-                clusters_with_obs = check.result.get("clusters_with_observability", [])
-
-                if observability_clusters > 0:
-                    examples = (
-                        f"Examples: {', '.join(clusters_with_obs[:3])}"
-                        if clusters_with_obs
-                        else ""
-                    )
-                    return f"{observability_clusters}/{total_clusters} EKS clusters have amazon-cloudwatch-observability add-on | {examples}"
-                return f"{observability_clusters}/{total_clusters} EKS clusters have amazon-cloudwatch-observability add-on"
-            return f"{base_info} | No EKS clusters found"
-
-        elif (
-            check.name
-            == "Do you use X-Ray service maps to visualize application architecture?"
-        ):
-            services = check.result.get("Services", [])
-            if services:
-                sample_names = [svc.get("Name", "Unknown") for svc in services[:3]]
-                return f"{base_info} | Found {plural(len(services), 'X-Ray service')} (e.g., {', '.join(sample_names)})"
-            return f"{base_info} | No X-Ray services found"
-
-        # Generic handling for other checks
-        elif isinstance(check.result, dict):
-            # Try to find common list keys first
-            for key in [
-                "Items",
-                "Resources",
-                "Entries",
-                "Rules",
-                "Policies",
-                "Canaries",
-                "AppMonitorSummaries",
-                "Queries",
-                "metricFilters",
-                "SamplingRuleRecords",
-                "clusterArns",
-                "Metrics",
-                "Subscriptions",
-                "OpsItemSummaries",
-                "IncidentRecordSummaries",
-            ]:
-                if key in check.result:
-                    items = check.result[key]
-                    if items:
-                        return f"{command_info} | Found {len(items)} {key.lower()}"
-                    return f"{command_info} | No {key.lower()} found"
-
-            # Check for specific response patterns
-            if "EncryptionConfig" in check.result:
-                return f"{command_info} | X-Ray encryption configuration retrieved"
-            elif "Organization" in check.result:
-                return f"{command_info} | Organization configuration retrieved"
-            elif "AccountHealth" in check.result:
-                return f"{command_info} | DevOps Guru account health retrieved"
-
-            # If it's a dict with meaningful data, be more specific
-            if check.result and len(check.result) > 0:
-                # Count non-empty values
-                non_empty_keys = [k for k, v in check.result.items() if v]
-                if non_empty_keys:
-                    return f"{command_info} | Configuration retrieved ({plural(len(non_empty_keys), 'property', 'properties')})"
-                else:
-                    return f"{command_info} | Empty configuration returned"
-            return f"{command_info} | No configuration found"
-
-        elif isinstance(check.result, list):
-            if check.result:
-                return f"{command_info} | Found {plural(len(check.result), 'item')}"
-            return f"{command_info} | No items found"
-
-        return f"{command_info} | Data retrieved successfully"

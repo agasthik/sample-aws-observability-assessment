@@ -28,10 +28,9 @@ class AwsRunner:
 
     def run(self, command, max_retries=3):
         """Execute AWS CLI command and return result, with retry on throttling."""
-        if self.profile:
-            command = command.replace(
-                "aws ", f"aws --profile {shlex.quote(self.profile)} "
-            )
+        # Only rewrite the leading "aws " so quoted arguments are left intact.
+        if self.profile and command.startswith("aws "):
+            command = f"aws --profile {shlex.quote(self.profile)} " + command[4:]
 
         if "--region" not in command:
             command = command.replace(

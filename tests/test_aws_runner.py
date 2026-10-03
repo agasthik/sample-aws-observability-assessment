@@ -48,6 +48,20 @@ class AwsRunnerTests(unittest.TestCase):
             env=env,
         )
 
+    def test_profile_is_injected_only_into_the_leading_command(self):
+        runner = AwsRunner("test-profile", "eu-west-1")
+        with patch(
+            "observability_assessment.aws.subprocess.run",
+            return_value=self.process(stdout="{}"),
+        ) as execute:
+            runner.run(
+                "aws ssm send-command --parameters 'commands=[\"aws s3 ls\"]' --output json"
+            )
+
+        args = execute.call_args.args[0]
+        self.assertEqual(args[:3], ["aws", "--profile", "test-profile"])
+        self.assertIn('commands=["aws s3 ls"]', args)
+
     def test_shell_syntax_is_never_run_locally_and_keeps_existing_region(self):
         runner = AwsRunner(region="us-east-1")
         command = (

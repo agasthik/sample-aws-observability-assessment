@@ -1,12 +1,19 @@
 # AWS Observability Assessment Tool
 
+[![License: MIT-0](https://img.shields.io/badge/License-MIT--0-blue.svg)](LICENSE)
+![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)
+![AWS CLI v2.37+](https://img.shields.io/badge/AWS%20CLI-v2.37%2B-orange.svg)
+[![Python lint](https://github.com/aws-samples/sample-aws-observability-assessment/actions/workflows/python-lint.yml/badge.svg)](https://github.com/aws-samples/sample-aws-observability-assessment/actions/workflows/python-lint.yml)
+[![cfn-lint](https://github.com/aws-samples/sample-aws-observability-assessment/actions/workflows/cfn-lint.yml/badge.svg)](https://github.com/aws-samples/sample-aws-observability-assessment/actions/workflows/cfn-lint.yml)
+
 Evaluate observability maturity across AWS environments with 52 discovery
 checks covering logs, metrics, traces, dashboards and alerting, and
 organizational practices. The tool generates HTML reports with maturity
 scores, supporting evidence, and recommendations.
 
-**[View the sample assessment report][sample-report]** (generated with the
-previous report layout; new reports use the Cloudscape UI described below).
+**[View the sample assessment report][sample-report]** or the
+**[sample organization summary report][sample-org-report]**, both generated
+with the Cloudscape report UI described below.
 
 ## Table of Contents
 
@@ -126,199 +133,25 @@ public endpoints (typically through NAT). See the
 If the clone or dependency installation fails, or the requested ref is
 unavailable, the build fails before the assessment runs. There is no S3 source fallback.
 
-For assessments spanning multiple accounts, continue to
+For assessments spanning multiple accounts, see
 [Multi-Account Assessment](#multi-account-assessment).
 
 ## Multi-Account Assessment
 
 Multi-account mode runs CodeBuild in a central assessment account, assumes
 `ObservabilityAssessmentRole` in each target account, and produces an
-organization summary plus reports for accounts that completed successfully.
-Check the summary's succeeded and failed account counts and confirm the
-expected per-account files. A build can succeed even if all target accounts
-failed assessment, because the summary report is still generated.
+organization summary plus per-account reports. Setup has three steps:
 
-### Recommended central account
+1. Deploy `1-observability-assessment-role.yaml` to each target account, as
+   standalone stacks or a service-managed StackSet.
+2. Choose explicit accounts (`AssessmentAccounts`) or OU discovery
+   (`AssessmentOUs`).
+3. Deploy `2-observability-assessment-codebuild.yaml` in the central account
+   with `CreateAssessmentRole=no`.
 
-For organization-wide scans, run CodeBuild from a delegated administrator
-member account, such as a dedicated security, tooling, or observability
-account, rather than the Organizations management account. This follows the
-AWS [best practices for the management account][orgs-mgmt-best-practices],
-which recommend keeping workloads and day-to-day tooling out of the management
-account and limiting access to it.
-
-With a delegated administrator central account:
-
-- Deploy the target role StackSet with `--call-as DELEGATED_ADMIN` after
-  [registering the account as a StackSets delegated administrator][stacksets-delegated-admin].
-- Grant OU discovery with the
-  [Organizations resource policy](#organizations-resource-policy-for-delegated-tooling-accounts),
-  which is applied once from the management account. Registering a delegated
-  administrator for another service does not grant these operations.
-- Deploy template 1 as a standalone stack in the management account only if
-  that account must also be assessed.
-
-### 1. Deploy the assessment role to target accounts
-
-#### Standalone target-account deployment
-
-For a small number of accounts, deploy
-`1-observability-assessment-role.yaml` separately in each target account.
-
-Run this command with credentials for each target account:
-
-```bash
-CENTRAL_ID=123456789012
-
-aws cloudformation create-stack \
-  --stack-name ObservabilityAssessmentRole \
-  --template-body file://1-observability-assessment-role.yaml \
-  --parameters ParameterKey=AssessmentAccountID,ParameterValue="$CENTRAL_ID" \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --region us-west-2
-```
-
-#### Organization-scale StackSet deployment
-
-For organization-scale deployment, use a service-managed CloudFormation
-StackSet. Use `DELEGATED_ADMIN` from a registered StackSets delegated
-administrator account (recommended) or `SELF` in the Organizations management
-account; both StackSets commands need the same `--call-as` value:
-
-```bash
-CENTRAL_ID=123456789012
-STACKSET_CALL_AS=DELEGATED_ADMIN
-
-aws cloudformation create-stack-set \
-  --stack-set-name ObservabilityAssessmentRole \
-  --template-body file://1-observability-assessment-role.yaml \
-  --parameters ParameterKey=AssessmentAccountID,ParameterValue="$CENTRAL_ID" \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --permission-model SERVICE_MANAGED \
-  --auto-deployment Enabled=true,RetainStacksOnAccountRemoval=false \
-  --call-as "$STACKSET_CALL_AS" \
-  --region us-west-2
-
-OPERATION_ID=$(aws cloudformation create-stack-instances \
-  --stack-set-name ObservabilityAssessmentRole \
-  --deployment-targets OrganizationalUnitIds=ou-xxxx-xxxxxxxx \
-  --regions us-west-2 \
-  --operation-preferences FailureToleranceCount=5,MaxConcurrentCount=6 \
-  --call-as "$STACKSET_CALL_AS" --region us-west-2 \
-  --query OperationId --output text)
-
-aws cloudformation describe-stack-set-operation \
-  --stack-set-name ObservabilityAssessmentRole \
-  --operation-id "$OPERATION_ID" --call-as "$STACKSET_CALL_AS" \
-  --query 'StackSetOperation.[Status,StatusReason]' --output table \
-  --region us-west-2
-aws cloudformation list-stack-instances \
-  --stack-set-name ObservabilityAssessmentRole \
-  --call-as "$STACKSET_CALL_AS" --region us-west-2 --output table
-```
-
-Wait until the operation completes and inspect every target stack instance
-before deploying the central CodeBuild project. `FailureToleranceCount=5` can
-permit a successful operation even when some instances failed, so verify the target
-roles exist in every account you intend to assess. For standalone role stacks,
-wait for stack creation to complete in each account. Run these commands after
-enabling
-[trusted access for StackSets][stacksets-trusted-access].
-
-IAM roles are global, so deploy this StackSet in only one Region. StackSets do
-not deploy stack instances to the management account; deploy template 1 there
-as a standalone stack if that account must also be assessed.
-
-The supplied trust policy permits only the provided CodeBuild role in
-`CENTRAL_ASSESSMENT_ACCOUNT_ID` to assume the target role. Extend the trust
-policy deliberately if a different automation role or local principal must
-assume it.
-
-### 2. Choose how accounts are discovered
-
-Use either:
-
-- `AssessmentAccounts` for an explicit comma-separated list of account IDs.
-  This does not require Organizations discovery permissions.
-- `AssessmentOUs` to discover accounts under one or more comma-separated root
-  or OU IDs. The central account must have the Organizations read operations
-  used by the tool.
-
-#### Organizations resource policy for delegated tooling accounts
-
-If CodeBuild runs in a delegated tooling account, an Organizations resource
-policy can grant those discovery operations from the management account:
-
-```bash
-aws organizations put-resource-policy --content \
-  '{
-    "Version": "2012-10-17",
-    "Statement": [
-      {
-        "Sid": "AllowObservabilityAssessmentAccountDiscovery",
-        "Effect": "Allow",
-        "Principal": {
-          "AWS": "arn:aws:iam::CENTRAL_ASSESSMENT_ACCOUNT_ID:root"
-        },
-        "Action": [
-          "organizations:ListAccounts",
-          "organizations:ListAccountsForParent",
-          "organizations:ListOrganizationalUnitsForParent",
-          "organizations:DescribeAccount",
-          "organizations:DescribeOrganization"
-        ],
-        "Resource": "*"
-      }
-    ]
-  }'
-```
-
-Registering a delegated administrator for another AWS service does not grant
-the Organizations API operations used by this tool.
-
-### 3. Deploy CodeBuild in the central account
-
-Set `CreateAssessmentRole=no` because the role was deployed separately to the
-target accounts. The following example assesses an explicit account list:
-
-```bash
-TARGET_ID=111111111111
-
-aws cloudformation create-stack \
-  --stack-name ObservabilityAssessmentCodeBuild \
-  --template-body file://2-observability-assessment-codebuild.yaml \
-  --parameters ParameterKey=AssessmentRegion,ParameterValue=us-west-2 \
-               ParameterKey=CreateAssessmentRole,ParameterValue=no \
-               ParameterKey=AssessmentAccounts,ParameterValue="$TARGET_ID" \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --region us-west-2
-```
-
-To discover accounts by organization scope, replace `AssessmentAccounts` with
-an `AssessmentOUs` parameter:
-
-```text
-ParameterKey=AssessmentOUs,ParameterValue=ou-xxxx-aaaaaaaa
-```
-
-### Optional: run multi-account mode locally
-
-These commands work only when the target role trust policies allow your local
-principal to assume `/service-role/ObservabilityAssessmentRole`:
-
-```bash
-# Explicit accounts
-python3 observability_assessment_comprehensive.py \
-  --profile YOUR_PROFILE \
-  --region us-west-2 \
-  --accounts 111111111111,222222222222
-
-# Root or OU scope
-python3 observability_assessment_comprehensive.py \
-  --profile YOUR_PROFILE \
-  --region us-west-2 \
-  --ou ou-xxxx-aaaaaaaa,ou-xxxx-bbbbbbbb
-```
+See the [Multi-Account Assessment guide](MULTI_ACCOUNT.md) for commands, the
+recommended delegated administrator setup, and the Organizations resource
+policy needed for OU discovery.
 
 ## CLI Options
 
@@ -350,24 +183,15 @@ questions:
 | Dashboards & Alerting | Q10–Q12 | Alarms, dashboards, and thresholds |
 | Organization | Q13–Q17 | Strategy, SLOs, ROI, AI/ML, and RUM |
 
+
 Each assessed question scores 1–4, and the overall score is the average of
-assessed questions. Questions without evaluable evidence are shown as
-**Not assessed** and excluded from the average. If none are assessed, the
-overall score is **N/A** and its maturity level is **Not assessed**. Otherwise,
-the report names the overall score's maturity level as follows:
-
-| Score | Maturity level |
-| --- | --- |
-| Below 2.0 | Reactive |
-| 2.0 to below 3.5 | Proactive |
-| 3.5 to 4.0 | Autonomous |
-
-The assessment is deterministic and rule-based, but some checks use heuristics
-or limited samples. Review
-[Assessment Methodology and Limitations](ASSESSMENT_METHODOLOGY.md) before using
-scores for governance decisions. It explains regional scope, evidence
-semantics, manual validation requirements, organization aggregation, and known
-portability constraints.
+assessed questions, labeled Reactive, Proactive, or Autonomous. Questions
+without evaluable evidence are shown as **Not assessed** and excluded from the
+average. The assessment is deterministic and rule-based, but some checks use
+heuristics or limited samples. Review
+[Assessment Methodology and Limitations](ASSESSMENT_METHODOLOGY.md) for score
+bands, evidence semantics, and known constraints before using scores for
+governance decisions.
 
 ## Output
 
@@ -391,12 +215,11 @@ question levels, score calculation, and overall maturity bands.
 Coverage indicators distinguish unavailable checks, unassessed questions, and
 questions with partial evidence from fully assessed results.
 
+
 Each HTML report embeds its report data and compiled UI assets, so it can be
 opened as a single file with JavaScript enabled. Report generation uses the
 compiled assets shipped with the repository; running an assessment locally or
-in CodeBuild does not require Node.js. The
-[hosted sample report][sample-report] still shows the previous layout until
-the public sample is regenerated.
+in CodeBuild does not require Node.js.
 
 The CSV is a discovery-oriented export, not a stable versioned interchange
 schema. For checks 12–50, `Found Count` is binary (1 or 0) rather than a
@@ -409,120 +232,10 @@ HTML evidence and methodology documentation when interpreting it.
 
 ## Cleanup
 
-Delete the resources in the reverse order they were created. CloudFormation
-cannot delete a stack while dependent resources it does not own still exist, so
-empty the retained S3 buckets and remove StackSet instances before deleting
-their parent resources. Replace Region and identifiers with the values you
-deployed.
-
-### 1. Empty and delete the report buckets
-
-The reports bucket and its access-log bucket are declared with
-`DeletionPolicy: Retain` and have versioning enabled, so deleting the CodeBuild
-stack leaves both buckets and their contents in place. Empty every object
-version from each bucket, then delete the buckets. Find the reports bucket name
-from the stack's `ReportBucketName` output; the access-log bucket is named in
-the stack's resources.
-
-```bash
-REPORT_BUCKET=$(aws cloudformation describe-stacks \
-  --stack-name ObservabilityAssessmentCodeBuild \
-  --query "Stacks[0].Outputs[?OutputKey=='ReportBucketName'].OutputValue" \
-  --output text --region us-west-2)
-
-# Deleting a bucket requires removing all object versions and delete markers
-# first because versioning is enabled.
-aws s3 rm "s3://$REPORT_BUCKET" --recursive --region us-west-2
-aws s3api delete-bucket --bucket "$REPORT_BUCKET" --region us-west-2
-```
-
-Repeat the empty-and-delete steps for the access-log bucket. If a bucket still
-reports objects on deletion, remaining noncurrent versions or delete markers
-must be purged (for example with `aws s3api list-object-versions` and
-`delete-objects`) before `delete-bucket` succeeds. Preserve any report history
-you need before emptying the buckets, because this is irreversible.
-
-### 2. Delete the CodeBuild stack
-
-With the buckets emptied, delete the stack that created the CodeBuild project,
-its IAM role, the Lambda trigger, and the bucket resources. In single-account
-mode (`CreateAssessmentRole=yes`), this stack also created the assessment role
-and removes it here.
-
-```bash
-aws cloudformation delete-stack \
-  --stack-name ObservabilityAssessmentCodeBuild --region us-west-2
-aws cloudformation wait stack-delete-complete \
-  --stack-name ObservabilityAssessmentCodeBuild --region us-west-2
-```
-
-### 3. Remove the assessment role from target accounts
-
-Skip this step in single-account mode; the role was deleted with the CodeBuild
-stack in step 2. For multi-account deployments, remove the role you deployed
-with `1-observability-assessment-role.yaml`.
-
-For standalone per-account stacks, delete the stack with credentials for each
-target account:
-
-```bash
-aws cloudformation delete-stack \
-  --stack-name ObservabilityAssessmentRole --region us-west-2
-aws cloudformation wait stack-delete-complete \
-  --stack-name ObservabilityAssessmentRole --region us-west-2
-```
-
-For a service-managed StackSet, delete the stack instances first, then the
-StackSet itself. Use the same `--call-as` value you deployed with
-(`DELEGATED_ADMIN` from a registered delegated administrator account, or `SELF`
-in the Organizations management account):
-
-```bash
-STACKSET_CALL_AS=DELEGATED_ADMIN
-
-OPERATION_ID=$(aws cloudformation delete-stack-instances \
-  --stack-set-name ObservabilityAssessmentRole \
-  --deployment-targets OrganizationalUnitIds=ou-xxxx-xxxxxxxx \
-  --regions us-west-2 --no-retain-stacks \
-  --call-as "$STACKSET_CALL_AS" --region us-west-2 \
-  --query OperationId --output text)
-
-aws cloudformation describe-stack-set-operation \
-  --stack-set-name ObservabilityAssessmentRole \
-  --operation-id "$OPERATION_ID" --call-as "$STACKSET_CALL_AS" \
-  --query 'StackSetOperation.[Status,StatusReason]' --output table \
-  --region us-west-2
-
-# After the instance-deletion operation reports SUCCEEDED:
-aws cloudformation delete-stack-set \
-  --stack-set-name ObservabilityAssessmentRole \
-  --call-as "$STACKSET_CALL_AS" --region us-west-2
-```
-
-If you deployed template 1 as a standalone stack in the Organizations
-management account so that account could also be assessed, delete that stack
-separately as shown above.
-
-### 4. Remove the Organizations resource policy
-
-If you added the Organizations resource policy to grant OU discovery to a
-delegated tooling account, remove the statement you added once no tooling
-account still needs it. If that statement is the only one in the policy, delete
-the resource policy from the management account:
-
-```bash
-aws organizations delete-resource-policy
-```
-
-If the policy carries other statements you rely on, edit it with
-`aws organizations put-resource-policy` to remove only the
-`AllowObservabilityAssessmentAccountDiscovery` statement instead of deleting the
-whole policy.
-
-### 5. Delete local output
-
-Local runs write reports under `assessment-result/`, which is gitignored.
-Remove that directory to clear local reports.
+The report buckets are retained when the CodeBuild stack is deleted, and
+multi-account deployments leave target-account roles and StackSets in place.
+Follow the [Cleanup guide](CLEANUP.md) to empty the buckets and remove the
+stacks, StackSets, and Organizations resource policy in the correct order.
 
 ## IAM Permissions
 
@@ -550,6 +263,4 @@ or omit that permission and treat the EC2 agent evidence as unavailable.
 
 [aws-cli-install]: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
 [sample-report]: https://aws-samples.github.io/sample-aws-observability-assessment/sample-result/observability_assessment_sample.html
-[stacksets-trusted-access]: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/stacksets-orgs-enable-trusted-access.html
-[orgs-mgmt-best-practices]: https://docs.aws.amazon.com/organizations/latest/userguide/orgs_best-practices_mgmt-acct.html
-[stacksets-delegated-admin]: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/stacksets-orgs-delegated-admin.html
+[sample-org-report]: https://aws-samples.github.io/sample-aws-observability-assessment/sample-result/org-scan-sample/organization_summary_20261003_050758.html

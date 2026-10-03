@@ -21,9 +21,9 @@ class QuestionScoringMixin:
                     question="How do you collect logs?",
                     maturity_descriptions={
                         1: "Basic log groups exist, some services logging",
-                        2: "Centralized collection with analytics (Logs Insights queries)",
-                        3: "Correlation patterns, anomaly detection models",
-                        4: "Automated insights, ML-based analysis",
+                        2: "Logging on at least half of compute types in use, with structured JSON or two or more compute types logging",
+                        3: "Logging on at least 75% of compute types in use, structured JSON, and cross-account or cross-Region centralization",
+                        4: "Level 3 plus the EKS CloudWatch Observability add-on or log anomaly detection",
                     },
                 ),
                 ObservabilityCheck(

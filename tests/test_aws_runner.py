@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT-0
 """Focused contracts for the concrete AWS CLI runner and its compatibility mixin."""
 
-import subprocess
 import unittest
+from types import SimpleNamespace
 from unittest.mock import call, patch
 
 from observability_assessment.aws import AwsMixin, AwsRunner
@@ -19,9 +19,7 @@ class ConfiguredAwsMixin(AwsMixin):
 class AwsRunnerTests(unittest.TestCase):
     @staticmethod
     def process(returncode=0, stdout="", stderr=""):
-        return subprocess.CompletedProcess(
-            args=["aws"], returncode=returncode, stdout=stdout, stderr=stderr
-        )
+        return SimpleNamespace(returncode=returncode, stdout=stdout, stderr=stderr)
 
     def test_direct_run_injects_profile_and_region_with_env(self):
         env = {"AWS_SESSION_TOKEN": "synthetic"}

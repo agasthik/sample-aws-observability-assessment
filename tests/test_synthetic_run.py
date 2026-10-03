@@ -6,13 +6,14 @@ import contextlib
 import csv
 import io
 import os
+import runpy
 import shutil
-import subprocess
 import sys
 import tempfile
 import unittest
 from collections import Counter
 from pathlib import Path
+from unittest.mock import patch
 
 from observability_assessment_comprehensive import ComprehensiveObservabilityAssessment
 
@@ -33,16 +34,40 @@ class SyntheticAssessmentTests(unittest.TestCase):
                 ignore=shutil.ignore_patterns("__pycache__"),
             )
 
-            result = subprocess.run(
-                [sys.executable, str(entrypoint), "--help"],
-                cwd=directory,
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=20,
-            )
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("--single-question", result.stdout)
+            # Run the copied entrypoint the way `python <script>` would: its
+            # directory first on sys.path and no package already imported, so
+            # the package must resolve from the sibling checkout.
+            cached = {
+                name: module
+                for name, module in sys.modules.items()
+                if name == "observability_assessment"
+                or name.startswith("observability_assessment.")
+            }
+            stdout = io.StringIO()
+            try:
+                for name in cached:
+                    del sys.modules[name]
+                with (
+                    patch.object(sys, "path", [str(checkout), *sys.path]),
+                    patch.object(sys, "argv", [str(entrypoint), "--help"]),
+                    contextlib.redirect_stdout(stdout),
+                    self.assertRaises(SystemExit) as exit_info,
+                ):
+                    runpy.run_path(str(entrypoint), run_name="__main__")
+                loaded = Path(sys.modules["observability_assessment"].__file__)
+            finally:
+                for name in [
+                    n
+                    for n in sys.modules
+                    if n == "observability_assessment"
+                    or n.startswith("observability_assessment.")
+                ]:
+                    del sys.modules[name]
+                sys.modules.update(cached)
+
+            self.assertEqual(exit_info.exception.code, 0)
+            self.assertIn("--single-question", stdout.getvalue())
+            self.assertTrue(loaded.is_relative_to(checkout))
 
     def test_full_run_writes_reports(self):
         assessment = ComprehensiveObservabilityAssessment(region="us-west-2")

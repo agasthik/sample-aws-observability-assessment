@@ -12,11 +12,13 @@ import io
 import json
 import os
 import re
+import runpy
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
 from botocore.exceptions import ClientError
@@ -144,18 +146,15 @@ class CatalogContractTests(unittest.TestCase):
 
 class CliContractTests(unittest.TestCase):
     def test_help_exposes_single_and_multi_account_options_without_aws(self):
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(ROOT / "observability_assessment_comprehensive.py"),
-                "--help",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=20,
-        )
-        self.assertEqual(result.returncode, 0, result.stderr)
+        entrypoint = str(ROOT / "observability_assessment_comprehensive.py")
+        stdout = io.StringIO()
+        with (
+            patch.object(sys, "argv", [entrypoint, "--help"]),
+            contextlib.redirect_stdout(stdout),
+            self.assertRaises(SystemExit) as exit_info,
+        ):
+            runpy.run_path(entrypoint, run_name="__main__")
+        self.assertEqual(exit_info.exception.code, 0)
         for option in (
             "--profile",
             "--region",
@@ -169,7 +168,7 @@ class CliContractTests(unittest.TestCase):
             "--max-workers",
         ):
             with self.subTest(option=option):
-                self.assertIn(option, result.stdout)
+                self.assertIn(option, stdout.getvalue())
 
     def test_codebuild_single_account_role_routes_to_assessment(self):
         from observability_assessment import cli
@@ -370,9 +369,7 @@ class RunnerContractTests(unittest.TestCase):
 
     @staticmethod
     def process(returncode=0, stdout="", stderr=""):
-        return subprocess.CompletedProcess(
-            args=["aws"], returncode=returncode, stdout=stdout, stderr=stderr
-        )
+        return SimpleNamespace(returncode=returncode, stdout=stdout, stderr=stderr)
 
     def test_successful_empty_output_is_empty_dict(self):
         with patch(

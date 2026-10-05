@@ -5,9 +5,12 @@ localfiles/
 
 # Assessment output files (may contain account-specific data)
 sample-result/*
-!sample-result/observability_assessment_sample.html
+!sample-result/observability_assessment_single_account_sample.html
 !sample-result/org-scan-sample/
 assessment-result/
+
+# Local run logs (may contain account IDs)
+*.log
 
 # Python cache files
 __pycache__/
@@ -15,9 +18,21 @@ __pycache__/
 *$py.class
 .pytest_cache/
 .mypy_cache/
+.venv/
 
 # Ruff cache
 .ruff_cache/
+
+# Node.js / report UI build artifacts (report_ui/ also has its own .gitignore).
+# The compiled report assets in observability_assessment/reporting/assets/ are
+# intentionally committed and must NOT be ignored.
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+.preview*.html
+npm-debug.log*
+yarn-error.log*
 
 # ASH: only track the config file, ignore scan output and everything else
 .ash/*
@@ -26,7 +41,9 @@ __pycache__/
 # IDE configurations
 .kiro/
 .vscode/
+.idea/
 
 .DS_Store
+Thumbs.db
 
-DESIGN_SYSTEM_TEMPLATE.MD
+.holmes/

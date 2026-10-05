@@ -1,0 +1,206 @@
+[
+  {
+    "question_id": 1,
+    "category": "Logs",
+    "question": "How do you collect logs?",
+    "target_level": 4,
+    "maturity_descriptions": {
+      "1": "Basic log groups exist, some services logging",
+      "2": "Logging on at least half of compute types in use, with structured JSON or two or more compute types logging",
+      "3": "Logging on at least 75% of compute types in use, structured JSON, and cross-account or cross-Region centralization",
+      "4": "Level 3 plus the EKS CloudWatch Observability add-on or log anomaly detection"
+    }
+  },
+  {
+    "question_id": 2,
+    "category": "Logs",
+    "question": "How do you use logs?",
+    "target_level": 4,
+    "maturity_descriptions": {
+      "1": "Manual log searches and basic queries",
+      "2": "Structured queries with faster analysis",
+      "3": "Automated correlation and anomaly detection",
+      "4": "Automated resolution and MTTR reduction"
+    }
+  },
+  {
+    "question_id": 3,
+    "category": "Logs",
+    "question": "How do you access logs?",
+    "target_level": 4,
+    "maturity_descriptions": {
+      "1": "Basic centralized collection",
+      "2": "Enterprise-wide visibility with prioritization",
+      "3": "Single-pane correlation and anomaly detection",
+      "4": "Automated insights with proactive root cause"
+    }
+  },
+  {
+    "question_id": 4,
+    "category": "Logs",
+    "question": "What is your log retention policy?",
+    "target_level": 4,
+    "maturity_descriptions": {
+      "1": "Disparate retention policies",
+      "2": "Enterprise-wide compliance-based policies",
+      "3": "Automated archival with cost optimization",
+      "4": "Easy retrieval with metadata-based search"
+    }
+  },
+  {
+    "question_id": 5,
+    "category": "Metrics",
+    "question": "What type of metrics do you collect?",
+    "target_level": 4,
+    "maturity_descriptions": {
+      "1": "Infrastructure metrics only (CPU, memory, disk utilization)",
+      "2": "Infrastructure and application metrics (latency, errors, volume)",
+      "3": "Infrastructure, application, and custom metrics",
+      "4": "All metrics with dimensions for critical metadata"
+    }
+  },
+  {
+    "question_id": 6,
+    "category": "Metrics",
+    "question": "How do you use metrics?",
+    "target_level": 4,
+    "maturity_descriptions": {
+      "1": "Manually explore metrics when diagnosing issues",
+      "2": "Dashboards and alerting for manual reaction",
+      "3": "Infrastructure automation and operational reviews",
+      "4": "AI/ML capabilities for proactive issue identification"
+    }
+  },
+  {
+    "question_id": 7,
+    "category": "Metrics",
+    "question": "How do you access metrics?",
+    "target_level": 4,
+    "maturity_descriptions": {
+      "1": "Centralized metric collection mechanism",
+      "2": "Enterprise-wide visibility for analysis and troubleshooting",
+      "3": "Correlation and anomaly detection for root cause",
+      "4": "Automated insights with proactive resolution options"
+    }
+  },
+  {
+    "question_id": 8,
+    "category": "Traces",
+    "question": "How do you collect traces?",
+    "target_level": 4,
+    "maturity_descriptions": {
+      "1": "Auto-instrumented SDKs for monitoring",
+      "2": "Auto + manual instrumentation",
+      "3": "End-to-end visibility with correlation",
+      "4": "Automatic injection with proactive alerts"
+    }
+  },
+  {
+    "question_id": 9,
+    "category": "Traces",
+    "question": "How do you use traces?",
+    "target_level": 4,
+    "maturity_descriptions": {
+      "1": "Centralized trace collection mechanism",
+      "2": "Analyze and troubleshoot issues based on captured information",
+      "3": "360-degree view for correlation and anomaly detection",
+      "4": "Cross-boundary insights with proactive root cause identification"
+    }
+  },
+  {
+    "question_id": 10,
+    "category": "Dashboards & Alerting",
+    "question": "How do you use alarms?",
+    "target_level": 4,
+    "maturity_descriptions": {
+      "1": "Alarms with notifications when metrics meet triggers",
+      "2": "Clear priority for alerts with urgency and customer impact",
+      "3": "Actionable alarms based on anomaly detection",
+      "4": "Composite alarms for aggregated health indicators"
+    }
+  },
+  {
+    "question_id": 11,
+    "category": "Dashboards & Alerting",
+    "question": "How do you use dashboards?",
+    "target_level": 4,
+    "maturity_descriptions": {
+      "1": "Basic resource monitoring",
+      "2": "Single pane of glass with visibility into various data sources",
+      "3": "Flexible dashboards with dynamic content based on input fields",
+      "4": "Automatically created dynamic visualizations relevant to issues"
+    }
+  },
+  {
+    "question_id": 12,
+    "category": "Dashboards & Alerting",
+    "question": "How adaptive are your alarm thresholds?",
+    "target_level": 4,
+    "maturity_descriptions": {
+      "1": "Alarms triggered immediately when a metric exceeds a static threshold",
+      "2": "Alarms triggered when a metric exceeds a threshold for a period of time",
+      "3": "Alarms triggered when a metric exhibits anomalous behavior",
+      "4": "Continuously analyze metrics, determine baselines, surface anomalies"
+    }
+  },
+  {
+    "question_id": 13,
+    "category": "Organization",
+    "question": "How do you use SLOs?",
+    "target_level": 4,
+    "maturity_descriptions": {
+      "1": "Team experimentation without adoption",
+      "2": "Enterprise adoption for reliability",
+      "3": "Prioritization for users and business",
+      "4": "Integrated platforms with error budgets"
+    }
+  },
+  {
+    "question_id": 14,
+    "category": "Organization",
+    "question": "Do you use any AI/ML capability today?",
+    "target_level": 4,
+    "maturity_descriptions": {
+      "1": "No AI/ML features",
+      "2": "Natural language query capability",
+      "3": "Automatic correlation and patterns",
+      "4": "Comprehensive AI/ML with real-time insights"
+    }
+  },
+  {
+    "question_id": 15,
+    "category": "Organization",
+    "question": "Do you have real end-user monitoring?",
+    "target_level": 4,
+    "maturity_descriptions": {
+      "1": "Test users for validation",
+      "2": "Synthetic scripts on a schedule",
+      "3": "Scripted interaction tests with correlation",
+      "4": "Real user monitoring with proactive anomalies"
+    }
+  },
+  {
+    "question_id": 16,
+    "category": "Organization",
+    "question": "Do you have an enterprise observability strategy?",
+    "target_level": 4,
+    "maturity_descriptions": {
+      "1": "Data collection strategy only",
+      "2": "Unified tools and technologies",
+      "3": "Established practices and training",
+      "4": "Culture of continuous improvement"
+    }
+  },
+  {
+    "question_id": 17,
+    "category": "Organization",
+    "question": "Are you getting ROI from your observability tools?",
+    "target_level": 4,
+    "maturity_descriptions": {
+      "1": "Want optimization without knowledge",
+      "2": "Vendor consolidation attempts",
+      "3": "Established validation policies",
+      "4": "Business value and cost optimization"
+    }
+  }
+]

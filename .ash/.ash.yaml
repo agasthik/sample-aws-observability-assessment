@@ -13,11 +13,6 @@ global_settings:
       path: '2-observability-assessment-codebuild.yaml'
       reason: 'S3 access-log destination bucket; enabling access logging on the log bucket itself would create recursive/self-referential logging.'
 
-    # Versioning is unnecessary for a short-lived, regenerable access-log bucket.
-    - rule_id: 'CKV_AWS_21'
-      path: '2-observability-assessment-codebuild.yaml'
-      reason: 'Access-log destination bucket holds only regenerable server access logs; versioning adds cost/complexity without security benefit.'
-
     # The Lambda log group is auto-created for a helper Lambda and holds no
     # sensitive data; SSE-KMS encryption is not required for this use case.
     - rule_id: 'CKV_AWS_158'
@@ -35,3 +30,32 @@ global_settings:
     - rule_id: 'CKV_AWS_116'
       path: '2-observability-assessment-codebuild.yaml'
       reason: 'One-shot custom-resource Lambda invoked once at stack creation; a DLQ provides no operational value for this synchronous trigger.'
+
+    # The AWS CLI runner tokenizes commands with shlex.split() and executes an
+    # argument list without a shell; interpolated AWS values are shlex.quote()d.
+    - rule_id: 'python.lang.security.audit.dangerous-subprocess-use-audit'
+      path: 'observability_assessment/aws.py'
+      reason: 'subprocess.run receives a shlex.split() argument list with shell=False; dynamic values are shlex.quote()d, so no command injection is possible.'
+
+    # Tests run the repository entry point with a fixed argument list
+    # ([sys.executable, <repo file>, "--help"]) and no shell.
+    - rule_id: 'python.lang.security.audit.dangerous-subprocess-use-audit'
+      path: 'tests/test_characterization.py'
+      reason: 'Test invokes the repo CLI with a static argument list and shell=False, and constructs CompletedProcess mocks; no untrusted input reaches subprocess.'
+
+    - rule_id: 'python.lang.security.audit.dangerous-subprocess-use-audit'
+      path: 'tests/test_synthetic_run.py'
+      reason: 'Test invokes the repo CLI with a static argument list and shell=False; no untrusted input reaches subprocess.'
+
+    # subprocess.CompletedProcess is a plain result object used as a mock
+    # return value; constructing it executes nothing.
+    - rule_id: 'python.lang.security.audit.dangerous-subprocess-use-audit'
+      path: 'tests/test_aws_runner.py'
+      reason: 'Only constructs subprocess.CompletedProcess mock return values; no process is executed.'
+
+    # The report UI JavaScript bundle is a committed, minified build artifact of
+    # the Cloudscape React app. The "Secret Keyword" match is a substring in
+    # compiled vendor code (e.g. React DOM), not a real credential.
+    - rule_id: 'SECRET-SECRET-KEYWORD'
+      path: 'observability_assessment/reporting/assets/report-ui.js'
+      reason: 'False positive in a committed minified build artifact; the match is a keyword substring in bundled vendor JavaScript, not an actual secret. No credential is present in the compiled UI assets.'

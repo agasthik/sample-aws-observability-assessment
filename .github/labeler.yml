@@ -24,6 +24,8 @@ dependencies:
   - changed-files:
     - any-glob-to-any-file:
       - 'requirements.txt'
+      - 'report_ui/package.json'
+      - 'report_ui/package-lock.json'
       - '.github/dependabot.yml'
 
 security:

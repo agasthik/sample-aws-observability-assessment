@@ -12,3 +12,11 @@ updates:
     # vetted (and yanked if compromised) before it reaches this repo.
     cooldown:
       default-days: 7
+
+  # Keep the pinned React report dependencies and lockfile current.
+  - package-ecosystem: "npm"
+    directory: "/report_ui"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7

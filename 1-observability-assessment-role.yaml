@@ -4,7 +4,8 @@
 # Security controls implemented in this template:
 #   - IAM role scoped to read-only observability actions (Priority: HIGH)
 #   - Trust policy restricted to a single assessment account (Priority: HIGH)
-#   - SSM write actions separated with document-name condition (Priority: HIGH)
+#   - Sole SSM write action (ssm:SendCommand) scoped by resource ARN to the
+#     AWS-RunShellScript document and this account's instances (Priority: HIGH)
 AWSTemplateFormatVersion: 2010-09-09
 Description: >-
   Deploys the IAM role (almost entirely read-only, with a single
@@ -24,6 +25,12 @@ Parameters:
 Resources:
   ObservabilityAssessmentRole:
     Type: 'AWS::IAM::Role'
+    # Some cfn-lint IAM action catalogs do not recognize the CloudWatch Omni list actions.
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks:
+            - W3037
     Properties:
       RoleName: ObservabilityAssessmentRole
       Path: '/service-role/'
@@ -63,6 +70,9 @@ Resources:
                   - cloudwatch:ListDashboards
                   - cloudwatch:GetDashboard
                   - cloudwatch:ListMetricStreams
+                  - cloudwatch:ListDomains
+                  - cloudwatch:ListSpaces
+                  - cloudwatch:ListIntegrations
                   - ec2:DescribeInstances
                   - lambda:ListFunctions
                   - lambda:GetFunctionConfiguration
@@ -71,6 +81,7 @@ Resources:
                   - xray:GetGroups
                   - xray:GetInsightSummaries
                   - xray:GetTraceSummaries
+                  - xray:GetTraceSegmentDestination
                   - ecs:ListClusters
                   - ecs:DescribeClusters
                   - ecs:ListTasks
@@ -79,6 +90,7 @@ Resources:
                   - eks:ListClusters
                   - eks:DescribeCluster
                   - eks:ListAddons
+                  - eks:DescribeAddon
                   - synthetics:DescribeCanaries
                   - rum:ListAppMonitors
                   - ssm:DescribeInstanceInformation

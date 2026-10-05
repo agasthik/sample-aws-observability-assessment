@@ -3,7 +3,8 @@
 #
 # Security controls implemented in this template:
 #   - S3 bucket: SSE-S3 encryption, public access blocked, SSL-only policy, versioning (Priority: HIGH)
-#   - AWS CodeBuild role: scoped to S3 PutObject, CloudWatch Logs, and sts:AssumeRole only (Priority: MEDIUM)
+#   - AWS CodeBuild role: scoped to S3 PutObject, CloudWatch Logs,
+#     Organizations account discovery, and sts:AssumeRole (Priority: MEDIUM)
 #   - Build timeout: 60 minutes maximum (Priority: MEDIUM)
 AWSTemplateFormatVersion: 2010-09-09
 Description: >-
@@ -37,6 +38,24 @@ Parameters:
       Leave empty for single-account or explicit account list mode.
     Type: String
     Default: ""
+  AssessmentRepoUrl:
+    Description: Public Git repository URL to clone the assessment source from.
+    Type: String
+    Default: https://github.com/aws-samples/sample-aws-observability-assessment.git
+    MinLength: 1
+  AssessmentGitRef:
+    Description: Public repository branch or tag to check out for each build.
+    Type: String
+    Default: main
+    MinLength: 1
+  ExpectedAssessmentCommitSha:
+    Description: >-
+      Optional full Git commit SHA. Fail the build if the checked-out commit
+      differs from this value.
+    Type: String
+    Default: ""
+    MaxLength: 40
+    AllowedPattern: '^$|^[0-9a-fA-F]{40}$'
 
 Conditions:
   CreateAssessmentRole: !Equals [!Ref CreateAssessmentRole, "yes"]
@@ -47,7 +66,14 @@ Resources:
     UpdateReplacePolicy: Retain
     DeletionPolicy: Retain
     Type: AWS::S3::Bucket
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_18
+            comment: "S3 access-log destination bucket; enabling access logging on the log bucket itself would create recursive/self-referential logging."
     Properties:
+      VersioningConfiguration:
+        Status: Enabled
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -62,6 +88,8 @@ Resources:
           - Id: ExpireAccessLogs
             Status: Enabled
             ExpirationInDays: 90
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 7
 
   ReportBucketAccessLogsPolicy:
     Type: AWS::S3::BucketPolicy
@@ -126,6 +154,12 @@ Resources:
   ObservabilityAssessmentRole:
     Condition: CreateAssessmentRole
     Type: "AWS::IAM::Role"
+    # Some cfn-lint IAM action catalogs do not recognize the CloudWatch Omni list actions.
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks:
+            - W3037
     Properties:
       RoleName: ObservabilityAssessmentRole
       Path: "/service-role/"
@@ -165,6 +199,9 @@ Resources:
                   - cloudwatch:ListDashboards
                   - cloudwatch:GetDashboard
                   - cloudwatch:ListMetricStreams
+                  - cloudwatch:ListDomains
+                  - cloudwatch:ListSpaces
+                  - cloudwatch:ListIntegrations
                   - ec2:DescribeInstances
                   - lambda:ListFunctions
                   - lambda:GetFunctionConfiguration
@@ -173,6 +210,7 @@ Resources:
                   - xray:GetGroups
                   - xray:GetInsightSummaries
                   - xray:GetTraceSummaries
+                  - xray:GetTraceSegmentDestination
                   - ecs:ListClusters
                   - ecs:DescribeClusters
                   - ecs:ListTasks
@@ -181,6 +219,7 @@ Resources:
                   - eks:ListClusters
                   - eks:DescribeCluster
                   - eks:ListAddons
+                  - eks:DescribeAddon
                   - synthetics:DescribeCanaries
                   - rum:ListAppMonitors
                   - ssm:DescribeInstanceInformation
@@ -243,7 +282,6 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:PutObject
-                  - s3:GetObject
                 Resource: !Sub "${ReportBucket.Arn}/*"
         - PolicyName: AssumeAssessmentRole
           PolicyDocument:
@@ -291,6 +329,15 @@ Resources:
           - Name: ASSESSMENT_OUS
             Value: !Ref AssessmentOUs
             Type: PLAINTEXT
+          - Name: ASSESSMENT_REPO_URL
+            Value: !Ref AssessmentRepoUrl
+            Type: PLAINTEXT
+          - Name: ASSESSMENT_GIT_REF
+            Value: !Ref AssessmentGitRef
+            Type: PLAINTEXT
+          - Name: EXPECTED_ASSESSMENT_COMMIT_SHA
+            Value: !Ref ExpectedAssessmentCommitSha
+            Type: PLAINTEXT
       Artifacts:
         Type: NO_ARTIFACTS
       Source:
@@ -302,15 +349,14 @@ Resources:
               runtime-versions:
                 python: 3.12
               commands:
-                # NOTE: CodeBuild runs each list item in a separate shell, so
-                # `set` flags do not persist across items. Each multi-line block
-                # below sets its own `set -euo pipefail` to fail fast.
+                # Each multi-line command enables strict shell flags so failures
+                # stop the build before the assessment or upload continues.
                 - |
                   set -euo pipefail
-                  # The AWS DevOps Agent check calls `aws devops-agent`, which ships
-                  # natively in AWS CLI v2 (>= 2.34.21). The standard image usually
-                  # already satisfies this, but update to the latest v2 to guarantee
-                  # the devops-agent commands are present regardless of image age.
+                  # The AWS DevOps Agent check calls `aws devops-agent` (AWS CLI v2
+                  # >= 2.34.21) and the CloudWatch Omni checks call
+                  # `aws cloudwatchomni` (>= 2.37.0). Update to the latest v2 so
+                  # both are present regardless of image age.
                   echo "AWS CLI version before update:"; aws --version
                   curl -sSfL --retry 3 --max-time 120 "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
                   unzip -q awscliv2.zip
@@ -321,17 +367,27 @@ Resources:
               commands:
                 - |
                   set -euo pipefail
-                  echo "Downloading assessment script..."
-                  SCRIPT_URL="https://raw.githubusercontent.com/aws-samples/sample-aws-observability-assessment/main/observability_assessment_comprehensive.py"
-                  if ! curl -sfL --retry 2 --max-time 60 -o observability_assessment_comprehensive.py "$SCRIPT_URL"; then
-                    echo "GitHub repo not available, downloading from S3..."
-                    aws s3 cp "s3://$BUCKET_REPORT/observability_assessment_comprehensive.py" .
-                  fi
-                  # Verify the script actually landed before trying to run it.
-                  if [ ! -s observability_assessment_comprehensive.py ]; then
-                    echo "ERROR: assessment script is missing or empty after download." >&2
+                  REPO_URL="$ASSESSMENT_REPO_URL"
+                  echo "Cloning ${REPO_URL} at ref ${ASSESSMENT_GIT_REF}..."
+                  if ! git clone --depth 1 --branch "$ASSESSMENT_GIT_REF" "$REPO_URL" assessment-src; then
+                    echo "ERROR: could not clone assessment source from ${REPO_URL} at ref ${ASSESSMENT_GIT_REF}. Check the repository URL, ref, and outbound HTTPS access." >&2
                     exit 1
                   fi
+                  ACTUAL_SHA=$(git -C assessment-src rev-parse --verify HEAD)
+                  echo "Assessment source commit: ${ACTUAL_SHA}"
+                  if [ -n "$EXPECTED_ASSESSMENT_COMMIT_SHA" ] && [ "$ACTUAL_SHA" != "$(printf '%s' "$EXPECTED_ASSESSMENT_COMMIT_SHA" | tr '[:upper:]' '[:lower:]')" ]; then
+                    echo "ERROR: assessment source commit ${ACTUAL_SHA} does not match expected SHA ${EXPECTED_ASSESSMENT_COMMIT_SHA}." >&2
+                    exit 1
+                  fi
+                  if [ ! -s assessment-src/observability_assessment_comprehensive.py ]; then
+                    echo "ERROR: assessment script is missing or empty in the cloned repository." >&2
+                    exit 1
+                  fi
+                  if [ ! -s assessment-src/requirements.txt ]; then
+                    echo "ERROR: assessment dependencies are missing from the cloned repository." >&2
+                    exit 1
+                  fi
+                  python3 -m pip install --disable-pip-version-check -r assessment-src/requirements.txt
                 - |
                   set -euo pipefail
                   # Resolve caller identity once and validate before building an ARN,
@@ -355,11 +411,11 @@ Resources:
                   fi
                   if [ -n "$MULTI_ACCOUNT_FLAGS" ]; then
                     echo "Running multi-account assessment: ${MULTI_ACCOUNT_FLAGS}"
-                    python3 observability_assessment_comprehensive.py --region "$ASSESSMENT_REGION" $MULTI_ACCOUNT_FLAGS
+                    python3 assessment-src/observability_assessment_comprehensive.py --region "$ASSESSMENT_REGION" $MULTI_ACCOUNT_FLAGS
                   else
                     ROLE_ARN="arn:${PARTITION}:iam::${ACCOUNT_ID}:role/service-role/ObservabilityAssessmentRole"
                     echo "Assuming assessment role: ${ROLE_ARN}"
-                    python3 observability_assessment_comprehensive.py --region "$ASSESSMENT_REGION" --role-arn "$ROLE_ARN"
+                    python3 assessment-src/observability_assessment_comprehensive.py --region "$ASSESSMENT_REGION" --role-arn "$ROLE_ARN"
                   fi
                 - |
                   set -euo pipefail
@@ -424,6 +480,7 @@ Resources:
           import cfnresponse
 
           def lambda_handler(event, context):
+              physical_id = event.get('PhysicalResourceId', context.log_stream_name)
               if event.get('RequestType') == 'Create':
                   try:
                       props = event.get('ResourceProperties', {})
@@ -432,18 +489,24 @@ Resources:
                           raise ValueError('Missing or invalid ProjectName')
                       cb = boto3.client('codebuild')
                       response = cb.start_build(projectName=project_name)
-                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {'buildID': response['build']['id']})
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {'buildID': response['build']['id']}, physicalResourceId=physical_id)
                   except Exception as e:
                       print(e)
-                      cfnresponse.send(event, context, cfnresponse.FAILED, {'error': str(e)})
+                      cfnresponse.send(event, context, cfnresponse.FAILED, {'error': str(e)}, physicalResourceId=physical_id)
               else:
-                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, physicalResourceId=physical_id)
 
   CodeBuildStartBuild:
     Type: Custom::CodeBuildStartBuild
     Properties:
       ServiceToken: !GetAtt CodeBuildStartBuildLambda.Arn
       ProjectName: !Ref ObservabilityAssessmentCodeBuild
+      # Ref creates an implicit dependency on the role in single-account mode.
+      # Keep this logical ID stable so stack updates send Update, not Create.
+      AssessmentRoleReady: !If
+        - CreateAssessmentRole
+        - !Ref ObservabilityAssessmentRole
+        - !Ref AWS::NoValue
 
 Outputs:
   ReportBucketName:
@@ -452,7 +515,3 @@ Outputs:
   CodeBuildProject:
     Description: CodeBuild project name
     Value: !Ref ObservabilityAssessmentCodeBuild
-  ManualUploadCommand:
-    Description: >-
-      If the GitHub repo is not public yet, upload the script manually after stack creation
-    Value: !Sub "aws s3 cp observability_assessment_comprehensive.py s3://${ReportBucket}/"

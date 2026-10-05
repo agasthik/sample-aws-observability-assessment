@@ -32,9 +32,9 @@ and internal AWS documentation team conventions.
 | Data Type | Placeholder Pattern | Notes |
 |---|---|---|
 | EC2 Instance ID | `i-1234567890abcdef0` | Keep `i-` prefix |
-| VPC ID | `vpc-1a2b3c4d5e6f7g8h9` | Keep `vpc-` prefix |
-| Subnet ID | `subnet-1a2b3c4d5e6f7g8h` | Keep `subnet-` prefix |
-| Security Group ID | `sg-1a2b3c4d5e6f7g8h9` | Keep `sg-` prefix |
+| VPC ID | `vpc-1a2b3c4d5e6f7a8b9` | Keep `vpc-` prefix |
+| Subnet ID | `subnet-1a2b3c4d5e6f7a8b` | Keep `subnet-` prefix |
+| Security Group ID | `sg-1a2b3c4d5e6f7a8b9` | Keep `sg-` prefix |
 | EKS/ECS Cluster | `ExampleAppEKS-cluster`, `ExampleECS-cluster` | Use `Example` prefix |
 | S3 Bucket | `amzn-s3-demo-bucket` or `example-bucket-name` | AWS standard demo bucket name |
 | CloudFormation Stack ID | `a1b2c3d4-0001-0001-0001-abcdef012345` | Increment middle sections for multiple |
@@ -47,12 +47,20 @@ and internal AWS documentation team conventions.
 
 ### UUIDs and GUIDs
 
-| Position | Pattern |
+The automated script (`scrub_uuids()`) replaces every full 8-4-4-4-12 UUID with an
+incrementing, all-hex placeholder of the form `a1b2c3d4-NNNN-NNNN-NNNN-abcdefNNNNNN`,
+where `NNNN`/`NNNNNN` is a zero-padded counter. Identical source UUIDs map to the same
+placeholder:
+
+| Position | Pattern the script emits |
 |---|---|
-| First | `a1b2c3d4-5678-90ab-cdef-EXAMPLE11111` |
-| Second | `a1b2c3d4-5678-90ab-cdef-EXAMPLE22222` |
-| Third | `a1b2c3d4-5678-90ab-cdef-EXAMPLE33333` |
-| Short form (stack IDs) | `a1b2c3d4-0001-0001-0001-abcdef012345` (increment `0001`) |
+| First | `a1b2c3d4-0001-0001-0001-abcdef000001` |
+| Second | `a1b2c3d4-0002-0002-0002-abcdef000002` |
+| Third | `a1b2c3d4-0003-0003-0003-abcdef000003` |
+
+When editing a report by hand, follow the same `a1b2c3d4-NNNN-...` form and keep the
+counter distinct per UUID. The short-form stack-ID style (`a1b2c3d4-0001-0001-0001-abcdef012345`)
+is also acceptable for manual edits.
 
 ### ARNs
 
@@ -117,9 +125,9 @@ Use the provided `scripts/scrub-sample-report.py` script:
 
 ```bash
 python3 scripts/scrub-sample-report.py \
-    --input assessment-result/observability_assessment_20260712_164009_209466560996.html \
-    --output sample-result/observability_assessment_sample.html \
-    --account-id 209466560996
+    --input assessment-result/observability_assessment_20260712_164009_123456789012.html \
+    --output sample-result/observability_assessment_single_account_sample.html \
+    --account-id 123456789012
 ```
 
 The script performs regex-based replacements in this order:
@@ -135,6 +143,15 @@ The script does not automatically discover arbitrary customer resource names or 
 every ARN resource-name component. Provide those values in `--names-file` and complete the
 manual review.
 
+Optional flags:
+
+- `--skip-uuids` leaves UUIDs untouched (step 5 above). Use it only when a report's UUIDs
+  are already non-sensitive and you want to preserve them; the default is to replace them.
+- `--strip-timestamps` removes the run timestamp from report filenames referenced in the
+  content (`observability_assessment_<ts>_<id>.html` → `observability_assessment_<id>.html`,
+  `organization_summary_<ts>.html` → `organization_summary.html`). Use it for org-scan
+  samples; see "Multi-Account / Org-Level Scrubbing" below.
+
 **Always review the output manually** — regex can miss context-dependent names
 (e.g., a log group named after an internal project that doesn't match a pattern).
 
@@ -145,27 +162,30 @@ patterns:
 
 ```bash
 python3 scripts/scrub-sample-report.py \
-    --input sample-result/observability_assessment_sample.html \
+    --input sample-result/observability_assessment_single_account_sample.html \
     --output /tmp/not-used.html \
-    --account-id 209466560996 \
+    --account-id 123456789012 \
     --verify-only
 ```
 
 ### Verification
 
-After scrubbing, verify no sensitive data remains:
+After scrubbing, verify that no sensitive data remains.
+
+These use `grep -E` (POSIX extended regex) so they run on both the BSD grep
+shipped with macOS and GNU grep on Linux:
 
 ```bash
 # Check for the real account ID
-grep -c "209466560996" sample-result/observability_assessment_sample.html
+grep -c "123456789012" sample-result/observability_assessment_single_account_sample.html
 # Should return 0
 
 # Check for common resource ID patterns that weren't caught
-grep -oP '\b\d{12}\b' sample-result/observability_assessment_sample.html | sort -u
+grep -oE '\b[0-9]{12}\b' sample-result/observability_assessment_single_account_sample.html | sort -u
 # Should only show 111122223333 (or other placeholder accounts)
 
 # Check for internal hostnames or endpoints
-grep -iP '(\.corp\.|\.internal\.|amazon\.com|@)' sample-result/observability_assessment_sample.html
+grep -iE '(\.corp\.|\.internal\.|amazon\.com|@)' sample-result/observability_assessment_single_account_sample.html
 # Should return nothing
 ```
 
@@ -207,14 +227,30 @@ user alias plus a label (`<alias>+<label>`). **Keep** the standard AWS Control T
 names — `Audit`, `Log Archive`, `Sandbox 1` — they're generic and make the sample look
 authentic.
 
-### 3. Filenames embed the account ID — rename them, or links break
+### 3. Filenames embed the account ID and run timestamp — normalize them, or links break
 
 Per-account filenames are `observability_assessment_<ts>_<accountid>.html`, and the summary
-links to them by that exact name. So: replace the account ID **inside** the HTML (fixes the
-`href`) **and** rename the output file to the placeholder ID (same `<ts>`). Because both use
-the same mapping, the links stay consistent. Keep timestamps — dates are not sensitive
-(see "Manual Scrubbing Checklist" item 6) — and keep the summary filename unchanged (the
-per-account "Back to Organization Summary" back-links point at it).
+links to them by that exact name (the static `href` list and the embedded JSON `link`). Each
+account report links back through its JSON `backLink` to `organization_summary_<ts>.html`.
+
+The committed sample uses **stable, timestamp-free names** so regenerating it updates files
+in place instead of deleting and re-adding all of them, and the README link keeps working:
+
+```
+sample-result/org-scan-sample/
+  organization_summary.html
+  observability_assessment_111122223333.html
+  observability_assessment_222233334444.html
+  ...
+```
+
+To get there, replace the account ID **inside** the HTML (the names-file mapping), pass
+`--strip-timestamps` so every cross-link drops its `<ts>`, and write each output file under
+the matching stable name. The run date still appears in each report's `generatedAt`.
+
+Assign placeholder IDs deterministically (management account → `111122223333`, then the
+rest sorted by account name) so the same account keeps the same filename across
+regenerations.
 
 ### 4. Turnkey loop
 
@@ -225,18 +261,21 @@ SRC=assessment-result/<run-dir>; OUT=sample-result/<sample-dir>; MAP=/tmp/name-m
 rm -rf "$OUT" && mkdir -p "$OUT"
 declare -A PH=( [<realid1>]=111122223333 [<realid2>]=222233334444 ... )   # 1 entry per account
 for f in "$SRC"/observability_assessment_*.html; do
-  base=$(basename "$f"); aid=$(echo "$base" | grep -oE '[0-9]{12}')
-  ts=$(echo "$base" | sed -E 's/observability_assessment_(.*)_[0-9]{12}\.html/\1/')
+  aid=$(basename "$f" | grep -oE '[0-9]{12}')
   python3 scripts/scrub-sample-report.py -i "$f" \
-    -o "$OUT/observability_assessment_${ts}_${PH[$aid]}.html" -a "$aid" --names-file "$MAP"
+    -o "$OUT/observability_assessment_${PH[$aid]}.html" -a "$aid" --names-file "$MAP" \
+    --strip-timestamps
 done
-SUM=$(basename "$SRC"/organization_summary_*.html)
-python3 scripts/scrub-sample-report.py -i "$SRC/$SUM" -o "$OUT/$SUM" -a <mgmt-id> --names-file "$MAP"
+python3 scripts/scrub-sample-report.py -i "$SRC"/organization_summary_*.html \
+  -o "$OUT/organization_summary.html" -a <mgmt-id> --names-file "$MAP" --strip-timestamps
 ```
+
+`declare -A` needs Bash 4+; on macOS run the loop with Homebrew `bash`, not the system
+`/bin/bash` 3.2.
 
 ### 5. Resource names the regex won't catch
 
-The script auto-handles resource IDs, ARNs, and UUIDs, but **custom resource names** need
+The script auto-handles resource IDs, account IDs in ARNs, and UUIDs, but **custom resource names** need
 explicit `--names-file` entries. Watch for (examples use generic placeholders — substitute
 what your run actually contains):
 
@@ -246,7 +285,7 @@ what your run actually contains):
   groups like `...-cdk-deployment`.
 - **Custom S3 buckets** — e.g. `my-app-bucket-<label>-<codename>` → `amzn-s3-demo-bucket`.
 - **Tool stacks** — a stack named after a third-party tool (e.g. a security scanner):
-  `<Tool>AssessmentStack`, `<tool>findingsbucket`. Map the bare token both cased
+  `<Tool>AssessmentStack`, `<tool>findingsbucket`. Map the bare token in both cases
   (`<Tool>` → `ExampleSecurity`, `<tool>` → `examplesecurity`).
 
 **Keep** genuinely public names — standard AWS workshop / sample-app resource names (e.g.
@@ -259,7 +298,7 @@ Mapping-order gotchas (the script applies `--names-file` **longest-first**):
 - Give a longer explicit entry (`<tool>2` → `ExampleSecurity2`) if a bare-token rule
   (`<tool>` → `examplesecurity`) would otherwise produce an ugly label like `examplesecurity2`.
 - Short hex fragments inside UUIDs/CSS colors (e.g. a 4-char hex like `abc4` inside
-  `...-4133-abc4-43d8...`) are false positives — the UUID scrubber rewrites those, so ignore.
+  `...-4133-abc4-43d8...`) are false positives — the UUID scrubber rewrites those, so ignore them.
 
 ### 6. Org-scan verification (do all of these)
 
@@ -272,9 +311,12 @@ grep -rohcE '<realid1>|<realid2>|...' "$OUT" | paste -sd+ | bc          # expect
 grep -rohiE '<alias>|<codename>|<custom-prefix>|<tool>|@amazon\.com' "$OUT" | sort -u   # empty
 # c) only placeholder 12-digit numbers remain
 grep -rohE '\b[0-9]{12}\b' "$OUT" | sort -u
-# d) cross-link integrity: every summary->account link resolves, and back-links resolve
-SUM=$(ls "$OUT"/organization_summary_*.html)
-for h in $(grep -oE 'observability_assessment_[0-9_]+\.html' "$SUM" | sort -u); do [ -f "$OUT/$h" ] || echo "MISSING $h"; done
+# d) cross-link integrity: every summary->account link and back-link resolves
+for h in $(grep -ohE '(observability_assessment|organization_summary)[0-9_]*\.html' "$OUT"/*.html | sort -u); do
+  [ -f "$OUT/$h" ] || echo "MISSING $h"
+done
+# e) no run timestamps left in filenames or links (expect empty)
+ls "$OUT" | grep -E '_[0-9]{8}_[0-9]{6}'; grep -ohE '_[0-9]{8}_[0-9]{6}\.html' "$OUT"/*.html | sort -u
 ```
 
 > **Do not paste real resource, account, or alias names into this guide or any committed
@@ -302,4 +344,3 @@ folder needs its own negation, e.g. `!sample-result/org-scan-sample/`. Verify wi
 - [AWS CLI Example Standards](https://docs.aws.amazon.com/cli/latest/userguide/welcome-examples.html) — `111122223333` convention
 - [AWS Documentation Conventions](https://docs.aws.amazon.com/general/latest/gr/docconventions.html) — placeholder formatting
 - [aws-samples contribution guide](https://github.com/aws-samples/.github/blob/main/CONTRIBUTING.md) — public repo standards
-- Commit `3d21ebb` in this repo — the original scrub that established the patterns used here

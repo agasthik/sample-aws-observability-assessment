@@ -25,9 +25,19 @@ jobs:
             **/*.yaml
             **/*.yml
             **/*.json
+            **/*.ts
+            **/*.tsx
             **/*.sh
             **/requirements*.txt
             **/Dockerfile*
+            .ash/.ash.yaml
+            .github/workflows/ash-security-scan.yml
+
+      - name: Detect ASH configuration changes
+        id: config-changed
+        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
+        with:
+          files: .ash/.ash.yaml
 
       - name: Set up Python
         if: steps.changed-files.outputs.any_changed == 'true'
@@ -39,12 +49,13 @@ jobs:
         if: steps.changed-files.outputs.any_changed == 'true'
         run: pip install git+https://github.com/awslabs/automated-security-helper.git@v3.2.6
 
-      - name: Create temp directory for changed files
+      - name: Prepare scan directory and configuration
         if: steps.changed-files.outputs.any_changed == 'true'
         env:
           ALL_CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
         run: |
-          mkdir -p /tmp/ash-scan
+          mkdir -p /tmp/ash-scan/.ash
+          cp .ash/.ash.yaml /tmp/ash-scan/.ash/.ash.yaml
           echo "Changed files for security scan:"
           echo "$ALL_CHANGED_FILES" | tr ' ' '\n'
 
@@ -61,10 +72,15 @@ jobs:
             fi
           done
 
-      - name: Run ASH scan on changed files
+      - name: Run ASH scan
         if: steps.changed-files.outputs.any_changed == 'true'
+        env:
+          CONFIG_CHANGED: ${{ steps.config-changed.outputs.any_changed }}
         run: |
-          cd /tmp/ash-scan
+          # A suppression change must be checked against the full repository.
+          if [ "$CONFIG_CHANGED" != "true" ]; then
+            cd /tmp/ash-scan
+          fi
           ash --mode container 2>&1 | tee /tmp/ash-output.log
 
       - name: Display scan results
